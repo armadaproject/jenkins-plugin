@@ -40,6 +40,7 @@ public class KubernetesComputer extends AbstractCloudComputer<KubernetesSlave> {
     private static final Logger LOGGER = Logger.getLogger(KubernetesComputer.class.getName());
 
     private boolean launching;
+    private String armadaJobId = "";
 
     public KubernetesComputer(KubernetesSlave slave) {
         super(slave);
@@ -200,6 +201,14 @@ public class KubernetesComputer extends AbstractCloudComputer<KubernetesSlave> {
      */
     public boolean isLaunching() {
         return launching;
+    }
+
+    public String getArmadaJobId() {
+        return armadaJobId;
+    }
+
+    public void setArmadaJobId(String armadaJobId) {
+        this.armadaJobId = armadaJobId;
     }
 
     @Override

@@ -27,8 +27,11 @@ package org.csanchez.jenkins.plugins.kubernetes;
 import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.INFO;
 import static java.util.logging.Level.WARNING;
-import static org.csanchez.jenkins.plugins.kubernetes.PodTemplateBuilder.ARMADA_LABEL;
 
+import api.Job.JobStatusRequest;
+import api.Job.JobStatusResponse;
+import api.SubmitOuterClass.JobState;
+import api.SubmitOuterClass.JobSubmitResponse;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.Functions;
@@ -56,8 +59,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import jenkins.metrics.api.Metrics;
 import org.apache.commons.lang.StringUtils;
+import org.awaitility.Awaitility;
 import org.csanchez.jenkins.plugins.kubernetes.pod.decorator.PodDecoratorException;
 import org.csanchez.jenkins.plugins.kubernetes.pod.retention.Reaper;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -69,8 +74,9 @@ public class KubernetesLauncher extends JNLPLauncher {
     // Report progress every 30 seconds
     private static final long REPORT_INTERVAL = TimeUnit.SECONDS.toMillis(30L);
 
-    private static final Collection<String> POD_TERMINATED_STATES =
-            Collections.unmodifiableCollection(Arrays.asList("Succeeded", "Failed"));
+    private static final Collection<JobState> JOB_TERMINATED_STATES =
+            Collections.unmodifiableCollection(Arrays.asList(JobState.FAILED, JobState.SUCCEEDED,
+                JobState.REJECTED));
 
     private static final Logger LOGGER = Logger.getLogger(KubernetesLauncher.class.getName());
 
@@ -97,7 +103,8 @@ public class KubernetesLauncher extends JNLPLauncher {
     }
 
     @Override
-    @SuppressFBWarnings(value = {"SWL_SLEEP_WITH_LOCK_HELD", "REC_CATCH_EXCEPTION"},
+    @SuppressFBWarnings(value = {"SWL_SLEEP_WITH_LOCK_HELD", "REC_CATCH_EXCEPTION",
+        "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"},
         justification = "This is fine")
     public synchronized void launch(SlaveComputer computer, TaskListener listener) {
         if (!(computer instanceof KubernetesComputer)) {
@@ -122,7 +129,6 @@ public class KubernetesLauncher extends JNLPLauncher {
         try {
             PodTemplate template = node.getTemplate();
             KubernetesCloud cloud = node.getKubernetesCloud();
-            KubernetesClient client = cloud.connect();
             ArmadaClient armadaClient = cloud.connectToArmada();
             Pod pod;
             try {
@@ -143,7 +149,7 @@ public class KubernetesLauncher extends JNLPLauncher {
             String podName = pod.getMetadata().getName();
 
             String namespace = Arrays.asList( //
-                            pod.getMetadata().getNamespace(), template.getNamespace(), client.getNamespace()) //
+                            pod.getMetadata().getNamespace(), template.getNamespace()) //
                     .stream()
                     .filter(s -> StringUtils.isNotBlank(s))
                     .findFirst()
@@ -152,23 +158,27 @@ public class KubernetesLauncher extends JNLPLauncher {
 
             // if the controller was interrupted after creating the pod but before it connected back, then
             // the pod might already exist and the creating logic must be skipped.
-            Pod existingPod = null;
-            try {
-                // getFirst() throws compilation error that it does not exist
-                // because of that get(0) is used
-                existingPod = client.pods().inNamespace(namespace).withLabel(ARMADA_LABEL, podName)
-                    .list().getItems().get(0);
-                LOGGER.info("Pod with label 'jenkins' found");
-            } catch (Exception e) {
-                LOGGER.warning("Pod with label 'jenkins' not found");
-            }
-            if (existingPod == null) {
-                LOGGER.log(FINE, () -> "Creating Pod: " + cloudName + " " + namespace + "/" + podName);
+            JobStatusResponse jobStatusResponse = armadaClient.getJobStatus(
+                JobStatusRequest.newBuilder()
+                    .addJobIds(kubernetesComputer.getArmadaJobId())
+                    .build());
+            JobState existingJobState = jobStatusResponse.getJobStatesMap()
+                .get(kubernetesComputer.getArmadaJobId());
+
+            LOGGER.info("Job with id:" + kubernetesComputer.getArmadaJobId() + " in state: "
+                + existingJobState);
+
+            if (existingJobState == JobState.UNKNOWN) {
+                LOGGER.log(FINE, () -> "Creating job: " + cloudName + "/" + podName);
                 try {
                     ArmadaMapper armadaMapper = new ArmadaMapper(cloud.getArmadaQueue(),
                         cloud.getArmadaNamespace(), cloud.getArmadaQueue(), pod);
 
-                    armadaClient.submitJob(armadaMapper.createJobSubmitRequest());
+                    JobSubmitResponse jobSubmitResponse = armadaClient.submitJob(
+                        armadaMapper.createJobSubmitRequest());
+                    String jobId = jobSubmitResponse.getJobResponseItems(0).getJobId();
+                    kubernetesComputer.setArmadaJobId(jobId);
+                    ((KubernetesSlave) computer.getNode()).setArmadaJobId(jobId);
                 } catch (KubernetesClientException e) {
                     Metrics.metricRegistry()
                             .counter(MetricNames.CREATION_FAILED)
@@ -217,27 +227,36 @@ public class KubernetesLauncher extends JNLPLauncher {
                     }
                     throw e;
                 }
-                LOGGER.log(INFO, () -> "Created Pod: " + cloudName + " " + namespace + "/" + podName);
-                listener.getLogger().printf("Created Pod: %s %s/%s%n", cloudName, namespace, podName);
+                LOGGER.log(INFO, () -> "Submitted job: " + kubernetesComputer.getArmadaJobId());
+                listener.getLogger().printf("Submitted job: %s %n",
+                    kubernetesComputer.getArmadaJobId());
                 Metrics.metricRegistry().counter(MetricNames.PODS_CREATED).inc();
 
-                node.getRunListener().getLogger().printf("Created Pod: %s %s/%s%n", cloudName, namespace, podName);
+                node.getRunListener().getLogger().printf("Submitted job: %s %n",
+                    kubernetesComputer.getArmadaJobId());
             } else {
-                LOGGER.log(INFO, () -> "Pod already exists: " + cloudName + " " + namespace + "/" + podName);
-                listener.getLogger().printf("Pod already exists: %s %s/%s%n", cloudName, namespace, podName);
+                LOGGER.log(INFO, () -> "Job already exists: " +
+                    kubernetesComputer.getArmadaJobId());
+                listener.getLogger().printf("Job already exists: %s %n",
+                    kubernetesComputer.getArmadaJobId());
             }
             kubernetesComputer.setLaunching(true);
 
-            ObjectMeta podMetadata = pod.getMetadata();
-            template.getWorkspaceVolume().createVolume(client, podMetadata);
-            template.getVolumes().forEach(volume -> volume.createVolume(client, podMetadata));
+            // not necessary
+//            ObjectMeta podMetadata = pod.getMetadata();
+//            template.getWorkspaceVolume().createVolume(client, podMetadata);
+//            template.getVolumes().forEach(volume -> volume.createVolume(client, podMetadata));
 
-            client.pods()
-                    .inNamespace(namespace)
-                    .withLabel(ARMADA_LABEL, podName)
-                    .waitUntilReady(template.getSlaveConnectTimeout(), TimeUnit.SECONDS);
-
-            LOGGER.log(INFO, () -> "Pod is running: " + cloudName + " " + namespace + "/" + podName);
+            Awaitility.await().atMost(template.getSlaveConnectTimeout(),
+                TimeUnit.SECONDS).until(() -> {
+                JobStatusResponse jobStatus = armadaClient.getJobStatus(
+                    JobStatusRequest.newBuilder()
+                        .addJobIds(kubernetesComputer.getArmadaJobId())
+                        .build());
+                return jobStatus.getJobStatesMap().get(kubernetesComputer.getArmadaJobId())
+                    == JobState.RUNNING;
+            });
+            LOGGER.log(INFO, () -> "Job is running: " + kubernetesComputer.getArmadaJobId());
 
             // We need the pod to be running and connected before returning
             // otherwise this method keeps being called multiple times
@@ -259,45 +278,51 @@ public class KubernetesLauncher extends JNLPLauncher {
                     break;
                 }
 
-                // Check that the pod hasn't failed already
-                pod = client.pods().inNamespace(namespace).withLabel(ARMADA_LABEL, podName).list()
-                    .getItems().get(0);
-                if (pod == null) {
+                // Check that the job hasn't failed already
+                JobState jobState = armadaClient.getJobStatus(
+                    JobStatusRequest.newBuilder()
+                        .addJobIds(kubernetesComputer.getArmadaJobId())
+                        .build()).getJobStatesMap().get(kubernetesComputer.getArmadaJobId());
+                if (jobState == JobState.FAILED || jobState == JobState.REJECTED) {
                     Metrics.metricRegistry().counter(MetricNames.LAUNCH_FAILED).inc();
-                    throw new IllegalStateException("Pod no longer exists: " + podName);
+                    throw new IllegalStateException("Job failed: "
+                        + kubernetesComputer.getArmadaJobId());
                 }
-                status = pod.getStatus().getPhase();
-                if (POD_TERMINATED_STATES.contains(status)) {
+
+                if (JOB_TERMINATED_STATES.contains(jobState)) {
                     Metrics.metricRegistry().counter(MetricNames.LAUNCH_FAILED).inc();
                     Metrics.metricRegistry()
                             .counter(MetricNames.metricNameForPodStatus(status))
                             .inc();
-                    logLastLines(containerStatuses, pod, node, null, client);
-                    throw new IllegalStateException("Pod '" + podName + "' is terminated. Status: " + status);
+                    // TODO see how to do this
+//                    logLastLines(containerStatuses, pod, node, null, client);
+                    throw new IllegalStateException("Job '" + kubernetesComputer.getArmadaJobId()
+                        + "' is in terminated state. State: " + jobState);
                 }
 
-                containerStatuses = pod.getStatus().getContainerStatuses();
-                List<ContainerStatus> terminatedContainers = new ArrayList<>();
-                for (ContainerStatus info : containerStatuses) {
-                    if (info != null) {
-                        if (info.getState().getTerminated() != null) {
-                            // Container has errored
-                            LOGGER.log(INFO, "Container is terminated {0} [{2}]: {1}", new Object[] {
-                                podName, info.getState().getTerminated(), info.getName()
-                            });
-                            listener.getLogger()
-                                    .printf(
-                                            "Container is terminated %1$s [%3$s]: %2$s%n",
-                                            podName, info.getState().getTerminated(), info.getName());
-                            Metrics.metricRegistry()
-                                    .counter(MetricNames.LAUNCH_FAILED)
-                                    .inc();
-                            terminatedContainers.add(info);
-                        }
-                    }
-                }
+                // TODO there are no longer container statutes
+//                containerStatuses = pod.getStatus().getContainerStatuses();
+//                List<ContainerStatus> terminatedContainers = new ArrayList<>();
+//                for (ContainerStatus info : containerStatuses) {
+//                    if (info != null) {
+//                        if (info.getState().getTerminated() != null) {
+//                            // Container has errored
+//                            LOGGER.log(INFO, "Container is terminated {0} [{2}]: {1}", new Object[] {
+//                                podName, info.getState().getTerminated(), info.getName()
+//                            });
+//                            listener.getLogger()
+//                                    .printf(
+//                                            "Container is terminated %1$s [%3$s]: %2$s%n",
+//                                            podName, info.getState().getTerminated(), info.getName());
+//                            Metrics.metricRegistry()
+//                                    .counter(MetricNames.LAUNCH_FAILED)
+//                                    .inc();
+//                            terminatedContainers.add(info);
+//                        }
+//                    }
+//                }
 
-                checkTerminatedContainers(terminatedContainers, pod, node, client);
+//                checkTerminatedContainers(terminatedContainers, pod, node, client);
 
                 if (lastReportTimestamp + REPORT_INTERVAL < System.currentTimeMillis()) {
                     LOGGER.log(INFO, "Waiting for agent to connect ({1}/{2}): {0}", new Object[] {
@@ -315,7 +340,7 @@ public class KubernetesLauncher extends JNLPLauncher {
                 Metrics.metricRegistry().counter(MetricNames.LAUNCH_FAILED).inc();
                 Metrics.metricRegistry().counter(MetricNames.FAILED_TIMEOUT).inc();
 
-                logLastLines(containerStatuses, pod, node, null, client);
+//                logLastLines(containerStatuses, pod, node, null, client);
                 throw new IllegalStateException(
                         "Agent is not connected after " + waitedForSlave + " seconds, status: " + status);
             }

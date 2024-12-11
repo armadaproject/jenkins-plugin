@@ -49,10 +49,8 @@
     <no-test-jar>false</no-test-jar>
     <useBeta>true</useBeta>
     <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
-    <spotbugs.effort>Max</spotbugs.effort>
-    <spotbugs.threshold>Low</spotbugs.threshold>
-    <spotless.check.skip>true</spotless.check.skip>
-    <armada-grpc-java-client.version>0.0.2</armada-grpc-java-client.version>
+
+    <armada-grpc-java-client.version>0.0.4</armada-grpc-java-client.version>
   </properties>
 
   <dependencyManagement>
@@ -277,6 +275,12 @@
           <artifactId>error_prone_annotations</artifactId>
         </exclusion>
       </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <version>4.2.2</version>
     </dependency>
   </dependencies>
 

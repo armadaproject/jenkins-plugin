@@ -1,8 +1,11 @@
 package org.csanchez.jenkins.plugins.kubernetes;
 
 import static org.csanchez.jenkins.plugins.kubernetes.KubernetesCloud.JNLP_NAME;
-import static org.csanchez.jenkins.plugins.kubernetes.PodTemplateBuilder.ARMADA_LABEL;
 
+import api.Job.JobStatusRequest;
+import api.Job.JobStatusResponse;
+import api.SubmitOuterClass.JobCancelRequest;
+import api.SubmitOuterClass.JobState;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
@@ -27,10 +30,9 @@ import hudson.slaves.CloudRetentionStrategy;
 import hudson.slaves.ComputerLauncher;
 import hudson.slaves.RetentionStrategy;
 import hudson.slaves.SlaveComputer;
+import io.armadaproject.ArmadaClient;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.IOException;
 import java.time.Instant;
@@ -87,6 +89,8 @@ public class KubernetesSlave extends AbstractCloudSlave {
 
     @CheckForNull
     private transient Pod pod;
+
+    private String armadaJobId = "";
 
     @NonNull
     public PodTemplate getTemplate() throws IllegalStateException {
@@ -279,6 +283,14 @@ public class KubernetesSlave extends AbstractCloudSlave {
         return Optional.ofNullable(pod);
     }
 
+    public String getArmadaJobId() {
+        return armadaJobId;
+    }
+
+    public void setArmadaJobId(String armadaJobId) {
+        this.armadaJobId = armadaJobId;
+    }
+
     /**
      * Returns the cloud instance which created this agent.
      * @return the cloud instance which created this agent.
@@ -363,26 +375,6 @@ public class KubernetesSlave extends AbstractCloudSlave {
             return;
         }
 
-        KubernetesClient client;
-        try {
-            client = cloud.connect();
-        } catch (KubernetesAuthException | IOException e) {
-            String msg = String.format(
-                    "Failed to connect to cloud %s. There may be leftover resources on the Kubernetes cluster.",
-                    getCloudName());
-            e.printStackTrace(listener.fatalError(msg));
-            LOGGER.log(Level.SEVERE, msg);
-            return;
-        }
-
-        // Prior to termination, determine if we should delete the slave pod based on
-        // the slave pod's current state and the pod retention policy.
-        // Healthy slave pods should still have a JNLP agent running at this point.
-        boolean deletePod = getPodRetention(cloud).shouldDeletePod(cloud, () -> client.pods()
-                .inNamespace(getNamespace())
-                .withLabel(ARMADA_LABEL, name)
-                .list().getItems().get(0));
-
         Computer computer = toComputer();
         if (computer == null) {
             String msg = String.format("Computer for agent is null: %s", name);
@@ -411,49 +403,40 @@ public class KubernetesSlave extends AbstractCloudSlave {
             return;
         }
 
-        if (deletePod) {
-            deleteSlavePod(listener, client);
-            Metrics.metricRegistry().counter(MetricNames.PODS_TERMINATED).inc();
-        } else {
-            // Log warning, as the agent pod may still be running
-            LOGGER.log(Level.WARNING, "Agent pod {0} was not deleted due to retention policy {1}.", new Object[] {
-                name, getPodRetention(cloud)
-            });
-        }
-        String msg = String.format("Disconnected computer %s", name);
-        LOGGER.log(Level.INFO, msg);
-        listener.getLogger().println(msg);
+      try {
+          ArmadaClient armadaClient = cloud.connectToArmada();
+          deleteSlavePod(listener, armadaClient);
+          Metrics.metricRegistry().counter(MetricNames.PODS_TERMINATED).inc();
+
+          String msg = String.format("Disconnected computer %s", name);
+          LOGGER.log(Level.INFO, msg);
+          listener.getLogger().println(msg);
+      } catch (KubernetesAuthException e) {
+          LOGGER.warning("Failed to connect to Armada. There might be leftover jobs running.");
+      }
     }
 
-    private void deleteSlavePod(TaskListener listener, KubernetesClient client) {
-        if (getNamespace() == null) {
-            return;
-        }
-        try {
-            boolean deleted = client.pods()
-                            .inNamespace(getNamespace())
-                            .withLabel(ARMADA_LABEL, name)
-                            .delete()
-                            .size()
-                    == 1;
-            if (!deleted) {
-                String msg = String.format("Failed to delete pod for agent %s/%s: not found", getNamespace(), name);
-                LOGGER.log(Level.WARNING, msg);
-                listener.error(msg);
-                return;
-            }
-        } catch (KubernetesClientException e) {
-            String msg =
-                    String.format("Failed to delete pod for agent %s/%s: %s", getNamespace(), name, e.getMessage());
-            LOGGER.log(Level.WARNING, msg, e);
-            listener.error(msg);
-            // TODO should perhaps retry later, in case API server is just overloaded currently
-            return;
-        }
+    private void deleteSlavePod(TaskListener listener, ArmadaClient armadaClient) {
+        JobStatusResponse jobStatusResponse = armadaClient.getJobStatus(JobStatusRequest.newBuilder()
+            .addJobIds(armadaJobId)
+            .build());
 
-        String msg = String.format("Terminated Kubernetes instance for agent %s/%s", getNamespace(), name);
-        LOGGER.log(Level.INFO, msg);
-        listener.getLogger().println(msg);
+        if (jobStatusResponse.getJobStatesMap().get(armadaJobId) == JobState.RUNNING) {
+            KubernetesCloud kubernetesCloud = getKubernetesCloud();
+            armadaClient.cancelJob(JobCancelRequest.newBuilder()
+                    .setQueue(kubernetesCloud.getArmadaQueue())
+                    .setJobSetId(kubernetesCloud.getArmadaQueue())
+                    .setJobId(armadaJobId)
+                .build());
+
+            String msg = ("Cancelled job: " + armadaJobId);
+            LOGGER.info(msg);
+            listener.getLogger().println(msg);
+        } else {
+            String msg = ("No jobs in running state for id: " + armadaJobId);
+            LOGGER.log(Level.WARNING, msg);
+            listener.error(msg);
+        }
     }
 
     @Override
