@@ -48,9 +48,11 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -167,8 +169,15 @@ public class KubernetesLauncher extends JNLPLauncher {
             if (existingJobState == JobState.UNKNOWN) {
                 LOGGER.log(FINE, () -> "Creating job: " + cloudName + "/" + podName);
                 try {
+                    String newArmadaJobSetId =
+                        cloud.getDisplayName() + new SimpleDateFormat("-ddMMyyyy").format(
+                            new Date());
+                    if (!newArmadaJobSetId.equals(cloud.getArmadaJobSetId())) {
+                        cloud.setArmadaJobSetId(newArmadaJobSetId);
+                    }
+
                     ArmadaMapper armadaMapper = new ArmadaMapper(cloud.getArmadaQueue(),
-                        cloud.getArmadaNamespace(), cloud.getArmadaQueue(), pod);
+                        cloud.getArmadaNamespace(), cloud.getArmadaJobSetId(), pod);
 
                     JobSubmitResponse jobSubmitResponse = armadaClient.submitJob(
                         armadaMapper.createJobSubmitRequest());
