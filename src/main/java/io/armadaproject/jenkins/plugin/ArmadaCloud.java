@@ -126,6 +126,7 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private String armadaCredentialsId;
     private String armadaLookoutUrl;
     private String armadaLookoutPort;
+    private String armadaJobSetId;
 
     private String serverUrl;
     private boolean useJenkinsProxy;
@@ -342,6 +343,15 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     @DataBoundSetter
     public void setArmadaLookoutPort(String armadaLookoutPort) {
         this.armadaLookoutPort = armadaLookoutPort;
+    }
+
+    public String getArmadaJobSetId() {
+        return armadaJobSetId;
+    }
+
+    @DataBoundSetter
+    public void setArmadaJobSetId(String armadaJobSetId) {
+        this.armadaJobSetId = armadaJobSetId;
     }
 
     public String getServerUrl() {

@@ -52,6 +52,10 @@ THE SOFTWARE.
       <f:textbox default="30000"/>
     </f:entry>
 
+    <f:entry title="${%Armada job set id}" field="armadaJobSetId">
+      <f:textbox/>
+    </f:entry>
+
     <f:validateButton title="${%Test Armada Connection}" progress="${%Testing...}" method="testArmadaConnection" with="armadaUrl,armadaPort,armadaCredentialsId" />
 
     <f:entry title="${%Kubernetes URL}" field="serverUrl">
