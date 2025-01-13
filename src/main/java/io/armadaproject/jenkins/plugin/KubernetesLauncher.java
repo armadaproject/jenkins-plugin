@@ -43,9 +43,10 @@ import hudson.slaves.JNLPLauncher;
 import hudson.slaves.SlaveComputer;
 import io.armadaproject.ArmadaClient;
 import io.armadaproject.ArmadaMapper;
+import io.armadaproject.jenkins.plugin.pod.decorator.PodDecoratorException;
+import io.armadaproject.jenkins.plugin.pod.retention.Reaper;
 import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -54,16 +55,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import jenkins.metrics.api.Metrics;
 import org.apache.commons.lang.StringUtils;
 import org.awaitility.Awaitility;
-import io.armadaproject.jenkins.plugin.pod.decorator.PodDecoratorException;
-import io.armadaproject.jenkins.plugin.pod.retention.Reaper;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 /**
@@ -146,8 +143,8 @@ public class KubernetesLauncher extends JNLPLauncher {
 
             String podName = pod.getMetadata().getName();
 
-            String namespace = Arrays.asList( //
-                            pod.getMetadata().getNamespace(), template.getNamespace()) //
+            String namespace = Arrays.asList(
+                            pod.getMetadata().getNamespace(), template.getNamespace())
                     .stream()
                     .filter(s -> StringUtils.isNotBlank(s))
                     .findFirst()
@@ -248,11 +245,6 @@ public class KubernetesLauncher extends JNLPLauncher {
             }
             kubernetesComputer.setLaunching(true);
 
-            // not necessary
-//            ObjectMeta podMetadata = pod.getMetadata();
-//            template.getWorkspaceVolume().createVolume(client, podMetadata);
-//            template.getVolumes().forEach(volume -> volume.createVolume(client, podMetadata));
-
             Awaitility.await().atMost(template.getSlaveConnectTimeout(),
                 TimeUnit.SECONDS).until(() -> {
                 JobStatusResponse jobStatus = armadaClient.getJobStatus(
@@ -300,35 +292,9 @@ public class KubernetesLauncher extends JNLPLauncher {
                     Metrics.metricRegistry()
                             .counter(MetricNames.metricNameForPodStatus(status))
                             .inc();
-                    // TODO see how to do this
-//                    logLastLines(containerStatuses, pod, node, null, client);
                     throw new IllegalStateException("Job '" + kubernetesComputer.getArmadaJobId()
                         + "' is in terminated state. State: " + jobState);
                 }
-
-                // TODO there are no longer container statutes
-//                containerStatuses = pod.getStatus().getContainerStatuses();
-//                List<ContainerStatus> terminatedContainers = new ArrayList<>();
-//                for (ContainerStatus info : containerStatuses) {
-//                    if (info != null) {
-//                        if (info.getState().getTerminated() != null) {
-//                            // Container has errored
-//                            LOGGER.log(INFO, "Container is terminated {0} [{2}]: {1}", new Object[] {
-//                                podName, info.getState().getTerminated(), info.getName()
-//                            });
-//                            listener.getLogger()
-//                                    .printf(
-//                                            "Container is terminated %1$s [%3$s]: %2$s%n",
-//                                            podName, info.getState().getTerminated(), info.getName());
-//                            Metrics.metricRegistry()
-//                                    .counter(MetricNames.LAUNCH_FAILED)
-//                                    .inc();
-//                            terminatedContainers.add(info);
-//                        }
-//                    }
-//                }
-
-//                checkTerminatedContainers(terminatedContainers, pod, node, client);
 
                 if (lastReportTimestamp + REPORT_INTERVAL < System.currentTimeMillis()) {
                     LOGGER.log(INFO, "Waiting for agent to connect ({1}/{2}): {0}", new Object[] {
@@ -346,7 +312,6 @@ public class KubernetesLauncher extends JNLPLauncher {
                 Metrics.metricRegistry().counter(MetricNames.LAUNCH_FAILED).inc();
                 Metrics.metricRegistry().counter(MetricNames.FAILED_TIMEOUT).inc();
 
-//                logLastLines(containerStatuses, pod, node, null, client);
                 throw new IllegalStateException(
                         "Agent is not connected after " + waitedForSlave + " seconds, status: " + status);
             }
@@ -378,52 +343,6 @@ public class KubernetesLauncher extends JNLPLauncher {
             node.terminate();
         } catch (IOException | InterruptedException e) {
             LOGGER.log(Level.WARNING, "Unable to remove Jenkins node", e);
-        }
-    }
-
-    private void checkTerminatedContainers(
-            List<ContainerStatus> terminatedContainers,
-            Pod pod,
-            KubernetesSlave slave,
-            KubernetesClient client) {
-        if (!terminatedContainers.isEmpty()) {
-            Map<String, Integer> errors = terminatedContainers.stream()
-                    .collect(Collectors.toMap(
-                            ContainerStatus::getName,
-                            (info) -> info.getState().getTerminated().getExitCode()));
-
-            // Print the last lines of failed containers
-            logLastLines(terminatedContainers, pod, slave, errors, client);
-            throw new IllegalStateException("Containers are terminated with exit codes: " + errors);
-        }
-    }
-
-    /**
-     * Log the last lines of containers logs
-     */
-    private void logLastLines(
-            @CheckForNull List<ContainerStatus> containers,
-            Pod pod,
-            KubernetesSlave slave,
-            Map<String, Integer> errors,
-            KubernetesClient client) {
-        if (containers != null) {
-            for (ContainerStatus containerStatus : containers) {
-                String containerName = containerStatus.getName();
-                String log = client.pods()
-                        .resource(pod)
-                        .inContainer(containerStatus.getName())
-                        .tailingLines(30)
-                        .getLog();
-                if (!StringUtils.isBlank(log)) {
-                    String msg =
-                            errors != null ? String.format(" exited with error %s", errors.get(containerName)) : "";
-                    LOGGER.log(
-                            Level.SEVERE,
-                            "Error in provisioning; agent={0}, template={1}. Container {2}{3}. Logs: {4}",
-                            new Object[] {slave, slave.getTemplateOrNull(), containerName, msg, log});
-                }
-            }
         }
     }
 
