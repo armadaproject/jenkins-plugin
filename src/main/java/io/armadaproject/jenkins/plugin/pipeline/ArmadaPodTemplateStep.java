@@ -511,12 +511,12 @@ public class ArmadaPodTemplateStep extends Step implements Serializable {
 
         @Override
         public String getFunctionName() {
-            return "podTemplate";
+            return "armadaPodTemplate";
         }
 
         @Override
         public String getDisplayName() {
-            return "Define a podTemplate to use in the kubernetes plugin";
+            return "Define a armadaPodTemplate to use in the kubernetes plugin";
         }
 
         @Override
