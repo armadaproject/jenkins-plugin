@@ -166,15 +166,17 @@ public class KubernetesLauncher extends JNLPLauncher {
             if (existingJobState == JobState.UNKNOWN) {
                 LOGGER.log(FINE, () -> "Creating job: " + cloudName + "/" + podName);
                 try {
-                    String newArmadaJobSetId =
-                        cloud.getDisplayName() + new SimpleDateFormat("-ddMMyyyy").format(
-                            new Date());
-                    if (!newArmadaJobSetId.equals(cloud.getArmadaJobSetId())) {
-                        cloud.setArmadaJobSetId(newArmadaJobSetId);
-                    }
+                    String armadaJobSetIdPrefix = StringUtils.isBlank(cloud.getArmadaJobSetPrefix())
+                        ? "" : cloud.getArmadaJobSetPrefix() + "-";
+
+                    String newArmadaJobSetId = cloud.getDisplayName()
+                        + new SimpleDateFormat("-ddMMyyyy").format(new Date());
+                    cloud.setArmadaJobSetId(newArmadaJobSetId);
+
+                    String completeArmadaJobSetId = armadaJobSetIdPrefix + newArmadaJobSetId;
 
                     ArmadaMapper armadaMapper = new ArmadaMapper(cloud.getArmadaQueue(),
-                        cloud.getArmadaNamespace(), cloud.getArmadaJobSetId(), pod);
+                        cloud.getArmadaNamespace(), completeArmadaJobSetId, pod);
 
                     JobSubmitResponse jobSubmitResponse = armadaClient.submitJob(
                         armadaMapper.createJobSubmitRequest());

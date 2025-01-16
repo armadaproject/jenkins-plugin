@@ -52,6 +52,10 @@ THE SOFTWARE.
       <f:textbox default="30000"/>
     </f:entry>
 
+    <f:entry title="${%Armada job set prefix}" field="armadaJobSetPrefix">
+      <f:textbox/>
+    </f:entry>
+
     <f:entry title="${%Armada job set id}" field="armadaJobSetId">
       <f:textbox/>
     </f:entry>
