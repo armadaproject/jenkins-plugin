@@ -16,12 +16,18 @@
 
 package io.armadaproject.jenkins.plugin.pipeline;
 
+import api.EventOuterClass.EventMessage;
+import api.EventOuterClass.JobSetRequest;
 import hudson.AbortException;
 import hudson.model.Node;
+import io.armadaproject.ArmadaClient;
+import io.armadaproject.ClusterConfigParser;
+import io.armadaproject.jenkins.plugin.ArmadaCloud;
 import io.armadaproject.jenkins.plugin.KubernetesSlave;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 
 /**
@@ -54,7 +60,37 @@ class KubernetesNodeContext implements Serializable {
     }
 
     KubernetesClient connectToCloud() throws Exception {
-        return getKubernetesSlave().getKubernetesCloud().connect();
+        KubernetesSlave kubernetesSlave = getKubernetesSlave();
+        ArmadaCloud kubernetesCloud = kubernetesSlave.getKubernetesCloud();
+        AtomicReference<String> serverUrl = new AtomicReference<>();
+        try (ArmadaClient armadaClient = kubernetesCloud.connectToArmada()) {
+            JobSetRequest jobSetRequest = JobSetRequest.newBuilder()
+                .setId(kubernetesCloud.getArmadaJobSetPrefix()
+                    + kubernetesCloud.getArmadaJobSetId())
+                .setQueue(kubernetesCloud.getArmadaQueue())
+                .setErrorIfMissing(true)
+                .build();
+
+            armadaClient.getEvents(jobSetRequest).forEachRemaining(e -> {
+                EventMessage message = e.getMessage();
+                if (message.getRunning().getJobId().equals(kubernetesSlave.getArmadaJobId())) {
+                    String clusterId = message.getRunning().getClusterId();
+                  try {
+                      serverUrl.set(
+                          ClusterConfigParser.parse(kubernetesCloud.getArmadaClusterConfigPath())
+                              .get(clusterId));
+
+                  } catch (Exception ex) {
+                    throw new RuntimeException("Failed to parse cluster config file", ex);
+                  }
+
+                    namespace = message.getRunning().getPodNamespace();
+                    podName = message.getRunning().getPodName();
+                }
+            });
+        }
+
+        return kubernetesCloud.connect(serverUrl.get(), namespace);
     }
 
     private KubernetesSlave getKubernetesSlave() throws IOException, InterruptedException {

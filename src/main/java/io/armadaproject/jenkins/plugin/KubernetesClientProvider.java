@@ -71,6 +71,29 @@ public class KubernetesClientProvider {
         return c.getClient();
     }
 
+    static KubernetesClient createClient(ArmadaCloud cloud, String serverUrl, String namespace)
+        throws KubernetesAuthException {
+        String displayName = cloud.getDisplayName();
+        final Client c = clients.getIfPresent(displayName);
+        if (c == null) {
+            KubernetesClient client = new KubernetesFactoryAdapter(
+                serverUrl,
+                namespace,
+                cloud.getServerCertificate(),
+                cloud.getCredentialsId(),
+                cloud.isSkipTlsVerify(),
+                cloud.getConnectTimeout(),
+                cloud.getReadTimeout(),
+                cloud.getMaxRequestsPerHost(),
+                cloud.isUseJenkinsProxy())
+                .createClient();
+            clients.put(displayName, new Client(getValidity(cloud), client));
+            LOGGER.log(Level.FINE, "Created new Kubernetes client: {0} {1}", new Object[] {displayName, client});
+            return client;
+        }
+        return c.getClient();
+    }
+
     /**
      * Compute the hash of connection properties of the given cloud. This hash can be used to determine if a cloud
      * was updated and a new connection is needed.
