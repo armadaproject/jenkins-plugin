@@ -347,7 +347,7 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     }
 
     public String getArmadaJobSetPrefix() {
-        return armadaJobSetPrefix;
+        return StringUtils.isBlank(armadaJobSetPrefix) ? "" : armadaJobSetPrefix + "-";
     }
 
     @DataBoundSetter
