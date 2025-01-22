@@ -66,7 +66,7 @@ public class ArmadaDeclarativeAgentScript extends DeclarativeAgentScript<ArmadaD
                                 // do not enclose the body with a `container` statement.
                                 body.call()
                             } else {
-                                script.container(container) {
+                                script.steps.'io.armadaproject.jenkins.plugin.pipeline.ContainerStep'(container) {
                                     body.call()
                                 }
                             }

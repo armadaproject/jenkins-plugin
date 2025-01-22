@@ -52,12 +52,12 @@ public class ContainerStep extends Step implements Serializable {
 
         @Override
         public String getFunctionName() {
-            return "container";
+            return "armadaContainer";
         }
 
         @Override
         public String getDisplayName() {
-            return "Run build steps in a container";
+            return "Run build steps in a armadaContainer";
         }
 
         @Override

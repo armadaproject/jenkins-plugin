@@ -184,7 +184,7 @@ public class PodTemplateStepExecution extends AbstractStepExecutionImpl {
         if (cloudName == null) {
             cloud = Jenkins.get().clouds.get(ArmadaCloud.class);
             if (cloud == null) {
-                throw new AbortException("No Kubernetes cloud was found.");
+                throw new AbortException("No Armada cloud was found.");
             }
         } else {
             Cloud cl = Jenkins.get().getCloud(cloudName);

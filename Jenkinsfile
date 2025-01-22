@@ -36,10 +36,10 @@ pipeline {
   stages {
     stage('Run maven') {
       steps {
-        container('maven') {
+        armadaContainer('maven') {
           sh 'mvn -version'
         }
-        container('busybox') {
+        armadaContainer('busybox') {
           sh '/bin/busybox'
         }
       }

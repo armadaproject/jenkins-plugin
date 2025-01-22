@@ -423,7 +423,8 @@ public class KubernetesSlave extends AbstractCloudSlave {
             ArmadaCloud armadaCloud = getKubernetesCloud();
             armadaClient.cancelJob(JobCancelRequest.newBuilder()
                     .setQueue(armadaCloud.getArmadaQueue())
-                    .setJobSetId(armadaCloud.getArmadaQueue())
+                    .setJobSetId(armadaCloud.getArmadaJobSetPrefix()
+                        + armadaCloud.getArmadaJobSetId())
                     .setJobId(armadaJobId)
                 .build());
 

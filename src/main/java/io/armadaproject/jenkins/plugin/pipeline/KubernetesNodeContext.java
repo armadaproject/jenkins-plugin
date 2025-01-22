@@ -73,6 +73,7 @@ class KubernetesNodeContext implements Serializable {
 
             armadaClient.getEvents(jobSetRequest).forEachRemaining(e -> {
                 EventMessage message = e.getMessage();
+                // FIXME add wait mechanism
                 if (message.getRunning().getJobId().equals(kubernetesSlave.getArmadaJobId())) {
                     String clusterId = message.getRunning().getClusterId();
                   try {
@@ -97,7 +98,7 @@ class KubernetesNodeContext implements Serializable {
         Node node = context.get(Node.class);
         if (!(node instanceof KubernetesSlave)) {
             throw new AbortException(
-                    String.format("Node is not a Kubernetes node: %s", node != null ? node.getNodeName() : null));
+                    String.format("Node is not a Armada node: %s", node != null ? node.getNodeName() : null));
         }
         return (KubernetesSlave) node;
     }
