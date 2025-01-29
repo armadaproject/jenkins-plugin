@@ -56,6 +56,10 @@ THE SOFTWARE.
       <f:textbox/>
     </f:entry>
 
+    <f:entry title="${%Armada cluster config file path}" field="armadaClusterConfigPath">
+      <f:textbox default="/tmp/clusters.xml"/>
+    </f:entry>
+
     <f:validateButton title="${%Test Armada Connection}" progress="${%Testing...}" method="testArmadaConnection" with="armadaUrl,armadaPort,armadaCredentialsId" />
 
     <f:entry title="${%Kubernetes URL}" field="serverUrl">

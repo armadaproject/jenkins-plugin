@@ -166,14 +166,13 @@ public class KubernetesLauncher extends JNLPLauncher {
             if (existingJobState == JobState.UNKNOWN) {
                 LOGGER.log(FINE, () -> "Creating job: " + cloudName + "/" + podName);
                 try {
-                    String armadaJobSetIdPrefix = StringUtils.isBlank(cloud.getArmadaJobSetPrefix())
-                        ? "" : cloud.getArmadaJobSetPrefix() + "-";
-
+                    // FIXME possible clash when pipeline starts before 00:00 and ends after 00:00
                     String newArmadaJobSetId = cloud.getDisplayName()
                         + new SimpleDateFormat("-ddMMyyyy").format(new Date());
                     cloud.setArmadaJobSetId(newArmadaJobSetId);
 
-                    String completeArmadaJobSetId = armadaJobSetIdPrefix + newArmadaJobSetId;
+                    String completeArmadaJobSetId =
+                        cloud.getArmadaJobSetPrefix() + newArmadaJobSetId;
 
                     ArmadaMapper armadaMapper = new ArmadaMapper(cloud.getArmadaQueue(),
                         cloud.getArmadaNamespace(), completeArmadaJobSetId, pod);

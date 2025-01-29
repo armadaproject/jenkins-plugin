@@ -128,6 +128,7 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private String armadaLookoutPort;
     private String armadaJobSetPrefix;
     private String armadaJobSetId;
+    private String armadaClusterConfigPath;
 
     private String serverUrl;
     private boolean useJenkinsProxy;
@@ -347,7 +348,7 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     }
 
     public String getArmadaJobSetPrefix() {
-        return armadaJobSetPrefix;
+        return StringUtils.isBlank(armadaJobSetPrefix) ? "" : armadaJobSetPrefix + "-";
     }
 
     @DataBoundSetter
@@ -362,6 +363,15 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     @DataBoundSetter
     public void setArmadaJobSetId(String armadaJobSetId) {
         this.armadaJobSetId = armadaJobSetId;
+    }
+
+    public String getArmadaClusterConfigPath() {
+        return armadaClusterConfigPath;
+    }
+
+    @DataBoundSetter
+    public void setArmadaClusterConfigPath(String armadaClusterConfigPath) {
+        this.armadaClusterConfigPath = armadaClusterConfigPath;
     }
 
     public String getServerUrl() {
@@ -681,6 +691,25 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
             getDisplayName(), serverUrl, namespace
         });
         KubernetesClient client = KubernetesClientProvider.createClient(this);
+
+        LOGGER.log(Level.FINE, "Connected to Kubernetes {0} URL {1} namespace {2}", new String[] {
+            getDisplayName(), client.getMasterUrl().toString(), namespace
+        });
+        return client;
+    }
+
+    /**
+     * Connects to Kubernetes.
+     *
+     * @return Kubernetes client.
+     */
+    @SuppressFBWarnings({"IS2_INCONSISTENT_SYNC", "DC_DOUBLECHECK"})
+    public KubernetesClient connect(String serverUrl, String namespace) throws KubernetesAuthException, IOException {
+
+        LOGGER.log(Level.FINEST, "Building connection to Kubernetes {0} URL {1} namespace {2}", new String[] {
+            getDisplayName(), serverUrl, namespace
+        });
+        KubernetesClient client = KubernetesClientProvider.createClient(this, serverUrl, namespace);
 
         LOGGER.log(Level.FINE, "Connected to Kubernetes {0} URL {1} namespace {2}", new String[] {
             getDisplayName(), client.getMasterUrl().toString(), namespace

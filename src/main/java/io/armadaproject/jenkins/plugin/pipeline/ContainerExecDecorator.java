@@ -472,7 +472,7 @@ public class ContainerExecDecorator extends LauncherDecorator implements Seriali
                         Pod pod = getClient()
                             .pods()
                             .inNamespace(getNamespace())
-                            .withLabel(PodTemplateBuilder.ARMADA_LABEL, getPodName()).list().getItems().get(0);
+                            .withName(getPodName()).get();
 
                         ExecWatch watch = getClient()
                                 .pods()
