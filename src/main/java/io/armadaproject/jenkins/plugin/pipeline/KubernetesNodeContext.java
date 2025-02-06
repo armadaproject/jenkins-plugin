@@ -28,6 +28,8 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 
 /**
@@ -35,6 +37,7 @@ import org.jenkinsci.plugins.workflow.steps.StepContext;
  */
 class KubernetesNodeContext implements Serializable {
 
+    private static final Logger LOGGER = Logger.getLogger(KubernetesNodeContext.class.getName());
     private static final long serialVersionUID = 1L;
 
     private StepContext context;
@@ -60,6 +63,8 @@ class KubernetesNodeContext implements Serializable {
     }
 
     KubernetesClient connectToCloud() throws Exception {
+        LOGGER.log(Level.INFO, "Namespace: {0} and PodName: {1} BEFORE Armada response",
+            new Object[]{namespace, podName});
         KubernetesSlave kubernetesSlave = getKubernetesSlave();
         ArmadaCloud kubernetesCloud = kubernetesSlave.getKubernetesCloud();
         AtomicReference<String> serverUrl = new AtomicReference<>();
@@ -91,6 +96,9 @@ class KubernetesNodeContext implements Serializable {
             });
         }
 
+        LOGGER.log(Level.INFO,
+            "ServerUrl: {0}, Namespace: {1} and PodName: {2} AFTER Armada response",
+            new Object[]{serverUrl.get(), namespace, podName});
         return kubernetesCloud.connect(serverUrl.get(), namespace);
     }
 
