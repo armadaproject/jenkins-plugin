@@ -45,7 +45,7 @@
     <slaveAgentPort />
     <jenkins.version>2.462.1</jenkins.version>
     <bom>2.462.x</bom>
-    <bom.version>3387.v0f2773fa_3200</bom.version>
+    <bom.version>4136.vca_c3202a_7fd1</bom.version>
     <no-test-jar>false</no-test-jar>
     <useBeta>true</useBeta>
     <gitHubRepo>armadaproject/${artifactId}</gitHubRepo>
