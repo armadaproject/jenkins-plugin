@@ -171,11 +171,8 @@ public class KubernetesLauncher extends JNLPLauncher {
                         + new SimpleDateFormat("-ddMMyyyy").format(new Date());
                     cloud.setArmadaJobSetId(newArmadaJobSetId);
 
-                    String completeArmadaJobSetId =
-                        cloud.getArmadaJobSetPrefix() + newArmadaJobSetId;
-
                     ArmadaMapper armadaMapper = new ArmadaMapper(cloud.getArmadaQueue(),
-                        cloud.getArmadaNamespace(), completeArmadaJobSetId, pod);
+                        cloud.getArmadaNamespace(), cloud.getCompleteArmadaJobSetId(), pod);
 
                     JobSubmitResponse jobSubmitResponse = armadaClient.submitJob(
                         armadaMapper.createJobSubmitRequest());

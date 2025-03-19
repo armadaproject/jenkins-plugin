@@ -1527,4 +1527,9 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
             }
         }
     }
+
+    public String getCompleteArmadaJobSetId() {
+        return getArmadaJobSetPrefix() + getArmadaJobSetId();
+    }
+
 }

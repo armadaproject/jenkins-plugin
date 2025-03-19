@@ -61,13 +61,12 @@ class KubernetesNodeContext implements Serializable {
 
     KubernetesClient connectToCloud() throws Exception {
         KubernetesSlave kubernetesSlave = getKubernetesSlave();
-        ArmadaCloud kubernetesCloud = kubernetesSlave.getKubernetesCloud();
+        ArmadaCloud armadaCloud = kubernetesSlave.getKubernetesCloud();
         AtomicReference<String> serverUrl = new AtomicReference<>();
-        try (ArmadaClient armadaClient = kubernetesCloud.connectToArmada()) {
+        try (ArmadaClient armadaClient = armadaCloud.connectToArmada()) {
             JobSetRequest jobSetRequest = JobSetRequest.newBuilder()
-                .setId(kubernetesCloud.getArmadaJobSetPrefix()
-                    + kubernetesCloud.getArmadaJobSetId())
-                .setQueue(kubernetesCloud.getArmadaQueue())
+                .setId(armadaCloud.getCompleteArmadaJobSetId())
+                .setQueue(armadaCloud.getArmadaQueue())
                 .setErrorIfMissing(true)
                 .build();
 
@@ -78,7 +77,7 @@ class KubernetesNodeContext implements Serializable {
                     String clusterId = message.getRunning().getClusterId();
                   try {
                       serverUrl.set(
-                          ClusterConfigParser.parse(kubernetesCloud.getArmadaClusterConfigPath())
+                          ClusterConfigParser.parse(armadaCloud.getArmadaClusterConfigPath())
                               .get(clusterId));
 
                   } catch (Exception ex) {
@@ -91,7 +90,7 @@ class KubernetesNodeContext implements Serializable {
             });
         }
 
-        return kubernetesCloud.connect(serverUrl.get(), namespace);
+        return armadaCloud.connect(serverUrl.get(), namespace);
     }
 
     private KubernetesSlave getKubernetesSlave() throws IOException, InterruptedException {
