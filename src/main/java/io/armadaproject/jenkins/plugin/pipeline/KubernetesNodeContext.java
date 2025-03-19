@@ -16,17 +16,19 @@
 
 package io.armadaproject.jenkins.plugin.pipeline;
 
-import api.EventOuterClass.EventMessage;
-import api.EventOuterClass.JobSetRequest;
+import static org.awaitility.Awaitility.await;
+
+import api.EventOuterClass.JobRunningEvent;
 import hudson.AbortException;
 import hudson.model.Node;
-import io.armadaproject.ArmadaClient;
 import io.armadaproject.ClusterConfigParser;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
 import io.armadaproject.jenkins.plugin.KubernetesSlave;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 
@@ -62,33 +64,45 @@ class KubernetesNodeContext implements Serializable {
     KubernetesClient connectToCloud() throws Exception {
         KubernetesSlave kubernetesSlave = getKubernetesSlave();
         ArmadaCloud armadaCloud = kubernetesSlave.getKubernetesCloud();
-        AtomicReference<String> serverUrl = new AtomicReference<>();
-        try (ArmadaClient armadaClient = armadaCloud.connectToArmada()) {
-            JobSetRequest jobSetRequest = JobSetRequest.newBuilder()
-                .setId(armadaCloud.getCompleteArmadaJobSetId())
-                .setQueue(armadaCloud.getArmadaQueue())
-                .setErrorIfMissing(true)
-                .build();
 
-            armadaClient.getEvents(jobSetRequest).forEachRemaining(e -> {
-                EventMessage message = e.getMessage();
-                // FIXME add wait mechanism
-                if (message.getRunning().getJobId().equals(kubernetesSlave.getArmadaJobId())) {
-                    String clusterId = message.getRunning().getClusterId();
-                  try {
-                      serverUrl.set(
-                          ClusterConfigParser.parse(armadaCloud.getArmadaClusterConfigPath())
-                              .get(clusterId));
+        // start watching armada events if watcher thread does not exist in cloud instance
+        armadaCloud.getJobSetIdThreads().putIfAbsent(armadaCloud.getCompleteArmadaJobSetId(),
+            armadaCloud.startWatchingArmadaEvents(armadaCloud.getCompleteArmadaJobSetId()));
 
-                  } catch (Exception ex) {
-                    throw new RuntimeException("Failed to parse cluster config file", ex);
-                  }
+        // wait for the watcher to create new key-value for jobSetId
+        await().atMost(60, TimeUnit.SECONDS).until(() ->
+                armadaCloud.getJobSetIdEvents().containsKey(armadaCloud.getCompleteArmadaJobSetId()));
+        Set<JobRunningEvent> jobRunningEvents =
+            armadaCloud.getJobSetIdEvents().get(armadaCloud.getArmadaJobSetId());
 
-                    namespace = message.getRunning().getPodNamespace();
-                    podName = message.getRunning().getPodName();
-                }
-            });
+        // wait for the event to be recorded
+        AtomicReference<JobRunningEvent> matchedEvent = new AtomicReference<>();
+        await().atMost(60, TimeUnit.SECONDS).until(() -> {
+            jobRunningEvents.stream()
+                .filter(event -> event.getJobId().equals(kubernetesSlave.getArmadaJobId()))
+                .findFirst()
+                .ifPresent(matchedEvent::set);
+            return matchedEvent.get() != null;
+        });
+
+        JobRunningEvent event = matchedEvent.get();
+        if (event == null) {
+            throw new RuntimeException("Failed to find job: " + kubernetesSlave.getArmadaJobId() +
+                " running event for jobSetId: " + armadaCloud.getCompleteArmadaJobSetId());
         }
+
+        AtomicReference<String> serverUrl = new AtomicReference<>();
+        try {
+            serverUrl.set(
+                ClusterConfigParser.parse(armadaCloud.getArmadaClusterConfigPath())
+                    .get(event.getClusterId()));
+
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to parse cluster config file", ex);
+        }
+
+        namespace = event.getPodNamespace();
+        podName = event.getPodName();
 
         return armadaCloud.connect(serverUrl.get(), namespace);
     }

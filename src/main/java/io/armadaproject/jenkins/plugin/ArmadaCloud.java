@@ -4,6 +4,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.lang.StringUtils.isEmpty;
 import static io.armadaproject.jenkins.plugin.KubernetesFactoryAdapter.resolveCredentials;
 
+import api.EventOuterClass.EventMessage;
+import api.EventOuterClass.EventStreamMessage;
+import api.EventOuterClass.JobRunningEvent;
+import api.EventOuterClass.JobSetRequest;
 import api.Health.HealthCheckResponse.ServingStatus;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
@@ -37,6 +41,7 @@ import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.VersionInfo;
+import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.io.StringReader;
 import java.net.ConnectException;
@@ -50,14 +55,18 @@ import java.security.cert.Certificate;
 import java.security.interfaces.DSAPublicKey;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.servlet.ServletException;
@@ -129,6 +138,9 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private String armadaJobSetPrefix;
     private String armadaJobSetId;
     private String armadaClusterConfigPath;
+    private transient ConcurrentHashMap<String, Set<JobRunningEvent>> jobSetIdEvents =
+        new ConcurrentHashMap<>();
+    private transient ConcurrentHashMap<String, Thread> jobSetIdThreads = new ConcurrentHashMap<>();
 
     private String serverUrl;
     private boolean useJenkinsProxy;
@@ -180,6 +192,86 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     public ArmadaCloud(String name) {
         super(name);
         setMaxRequestsPerHost(DEFAULT_MAX_REQUESTS_PER_HOST);
+        armadaJobSetId = name + new SimpleDateFormat("-ddMMyyyy").format(new Date());
+    }
+
+    // TODO add mechanics for stop watching
+    public Thread startWatchingArmadaEvents(String jobSetId) {
+        Runnable job = () -> {
+          try (ArmadaClient armadaClient = connectToArmada()) {
+              JobSetRequest jobSetRequest = JobSetRequest.newBuilder()
+                  .setId(jobSetId)
+                  .setQueue(getArmadaQueue())
+                  .setWatch(true)
+                  .build();
+
+              jobSetIdEvents.put(jobSetId, new HashSet<>());
+
+              StreamObserver<EventStreamMessage> streamObserver = new StreamObserver<>() {
+                  @Override
+                  public void onNext(EventStreamMessage value) {
+                      // TODO change log level to FINE
+                      LOGGER.log(Level.INFO,
+                          "event received for jobSetId: " + jobSetId + " message: " + value);
+                      if (!value.hasMessage()) {
+                          return;
+                      }
+
+                      EventMessage message = value.getMessage();
+                      String jobId;
+                      switch (message.getEventsCase()) {
+                          case FAILED:
+                              jobId = message.getFailed().getJobId();
+                              break;
+                          case SUCCEEDED:
+                              jobId = message.getSucceeded().getJobId();
+                              break;
+                          case CANCELLED:
+                              jobId = message.getCancelled().getJobId();
+                              break;
+                          default:
+                              jobId = null;
+                              break;
+                      }
+
+                      if (Objects.nonNull(jobId)) {
+                          // TODO configure level to FINE
+                          LOGGER.log(Level.INFO, "removing running event for jobSetId: " + jobSetId
+                              + " and jobId: " + jobId);
+                          jobSetIdEvents.get(jobSetId)
+                              .removeIf(event -> event.getJobId().equals(jobId));
+                      }
+
+                      if (!message.hasRunning()) {
+                          return;
+                      }
+
+                      JobRunningEvent jobRunningEvent = message.getRunning();
+                      jobSetIdEvents.get(jobSetId).add(jobRunningEvent);
+                  }
+
+                  @Override
+                  public void onError(Throwable t) {
+                      LOGGER.log(Level.SEVERE,
+                          "error received for jobSetId: " + jobSetId + " error: " +t);
+                  }
+
+                  @Override
+                  public void onCompleted() {
+                      LOGGER.info("streaming completed for jobSetId: " + jobSetId);
+                  }
+              };
+
+              armadaClient.streamEvents(jobSetRequest, streamObserver);
+          } catch (KubernetesAuthException e) {
+              LOGGER.log(Level.SEVERE,
+                  "Failed to connect to Armada. Could not start watching events.");
+          }
+        };
+        Thread watcher = new Thread(job);
+        jobSetIdThreads.put(jobSetId, watcher);
+        watcher.start();
+        return watcher;
     }
 
     /**
@@ -1068,6 +1160,24 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         j.save();
         // take the user back.
         return FormApply.success("templates");
+    }
+
+    public ConcurrentHashMap<String, Set<JobRunningEvent>> getJobSetIdEvents() {
+        return jobSetIdEvents;
+    }
+
+    public void setJobSetIdEvents(
+        ConcurrentHashMap<String, Set<JobRunningEvent>> jobSetIdEvents) {
+        this.jobSetIdEvents = jobSetIdEvents;
+    }
+
+    public ConcurrentHashMap<String, Thread> getJobSetIdThreads() {
+        return jobSetIdThreads;
+    }
+
+    public void setJobSetIdThreads(
+        ConcurrentHashMap<String, Thread> jobSetIdThreads) {
+        this.jobSetIdThreads = jobSetIdThreads;
     }
 
     @Extension
