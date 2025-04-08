@@ -49,7 +49,7 @@
     <no-test-jar>false</no-test-jar>
     <useBeta>true</useBeta>
     <gitHubRepo>armadaproject/${artifactId}</gitHubRepo>
-    <java-client.version>0.0.2</java-client.version>
+    <java-client.version>0.0.3</java-client.version>
   </properties>
 
   <dependencyManagement>
