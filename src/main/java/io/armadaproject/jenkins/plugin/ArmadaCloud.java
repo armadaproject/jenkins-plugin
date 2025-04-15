@@ -61,7 +61,6 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -138,9 +137,8 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private String armadaJobSetPrefix;
     private String armadaJobSetId;
     private String armadaClusterConfigPath;
-    private transient ConcurrentHashMap<String, Set<JobRunningEvent>> jobSetIdEvents =
-        new ConcurrentHashMap<>();
-    private transient ConcurrentHashMap<String, Thread> jobSetIdThreads = new ConcurrentHashMap<>();
+    private transient ConcurrentHashMap<String, Thread> jobSetIdThreads;
+    private transient ArmadaEventManager<JobRunningEvent> armadaEventManager;
 
     private String serverUrl;
     private boolean useJenkinsProxy;
@@ -205,8 +203,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                   .setWatch(true)
                   .build();
 
-              jobSetIdEvents.put(jobSetId, new HashSet<>());
-
               StreamObserver<EventStreamMessage> streamObserver = new StreamObserver<>() {
                   @Override
                   public void onNext(EventStreamMessage value) {
@@ -218,36 +214,12 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                       }
 
                       EventMessage message = value.getMessage();
-                      String jobId;
-                      switch (message.getEventsCase()) {
-                          case FAILED:
-                              jobId = message.getFailed().getJobId();
-                              break;
-                          case SUCCEEDED:
-                              jobId = message.getSucceeded().getJobId();
-                              break;
-                          case CANCELLED:
-                              jobId = message.getCancelled().getJobId();
-                              break;
-                          default:
-                              jobId = null;
-                              break;
-                      }
-
-                      if (Objects.nonNull(jobId)) {
-                          // TODO configure level to FINE
-                          LOGGER.log(Level.INFO, "removing running event for jobSetId: " + jobSetId
-                              + " and jobId: " + jobId);
-                          jobSetIdEvents.get(jobSetId)
-                              .removeIf(event -> event.getJobId().equals(jobId));
-                      }
-
                       if (!message.hasRunning()) {
                           return;
                       }
 
                       JobRunningEvent jobRunningEvent = message.getRunning();
-                      jobSetIdEvents.get(jobSetId).add(jobRunningEvent);
+                      armadaEventManager.publish(jobRunningEvent);
                   }
 
                   @Override
@@ -1162,22 +1134,22 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         return FormApply.success("templates");
     }
 
-    public ConcurrentHashMap<String, Set<JobRunningEvent>> getJobSetIdEvents() {
-        return jobSetIdEvents;
-    }
-
-    public void setJobSetIdEvents(
-        ConcurrentHashMap<String, Set<JobRunningEvent>> jobSetIdEvents) {
-        this.jobSetIdEvents = jobSetIdEvents;
-    }
-
     public ConcurrentHashMap<String, Thread> getJobSetIdThreads() {
+        // after jenkins is restarted some added fields are not initialized, this fixes it
+        if (jobSetIdThreads == null) {
+            jobSetIdThreads = new ConcurrentHashMap<>();
+        }
+
         return jobSetIdThreads;
     }
 
-    public void setJobSetIdThreads(
-        ConcurrentHashMap<String, Thread> jobSetIdThreads) {
-        this.jobSetIdThreads = jobSetIdThreads;
+    public ArmadaEventManager<JobRunningEvent> getArmadaEventManager() {
+        // after jenkins is restarted some added fields are not initialized, this fixes it
+        if (armadaEventManager == null) {
+            armadaEventManager = new ArmadaEventManager<>();
+        }
+
+        return armadaEventManager;
     }
 
     @Extension

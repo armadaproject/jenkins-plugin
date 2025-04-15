@@ -23,6 +23,7 @@ import hudson.AbortException;
 import hudson.model.Node;
 import io.armadaproject.ClusterConfigParser;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
+import io.armadaproject.jenkins.plugin.ArmadaEventManager;
 import io.armadaproject.jenkins.plugin.KubernetesSlave;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
@@ -65,25 +66,21 @@ class KubernetesNodeContext implements Serializable {
         KubernetesSlave kubernetesSlave = getKubernetesSlave();
         ArmadaCloud armadaCloud = kubernetesSlave.getKubernetesCloud();
 
-        // start watching armada events if watcher thread does not exist in cloud instance
-        armadaCloud.getJobSetIdThreads().putIfAbsent(armadaCloud.getCompleteArmadaJobSetId(),
-            armadaCloud.startWatchingArmadaEvents(armadaCloud.getCompleteArmadaJobSetId()));
-
-        // wait for the watcher to create new key-value for jobSetId
-        await().atMost(60, TimeUnit.SECONDS).until(() ->
-                armadaCloud.getJobSetIdEvents().containsKey(armadaCloud.getCompleteArmadaJobSetId()));
-        Set<JobRunningEvent> jobRunningEvents =
-            armadaCloud.getJobSetIdEvents().get(armadaCloud.getArmadaJobSetId());
-
-        // wait for the event to be recorded
+        ArmadaEventManager<JobRunningEvent> armadaEventManager =
+            armadaCloud.getArmadaEventManager();
         AtomicReference<JobRunningEvent> matchedEvent = new AtomicReference<>();
-        await().atMost(60, TimeUnit.SECONDS).until(() -> {
-            jobRunningEvents.stream()
-                .filter(event -> event.getJobId().equals(kubernetesSlave.getArmadaJobId()))
-                .findFirst()
-                .ifPresent(matchedEvent::set);
-            return matchedEvent.get() != null;
+        armadaEventManager.subscribe(event -> {
+            if (event.getJobId().equals(kubernetesSlave.getArmadaJobId())) {
+                matchedEvent.set(event);
+            }
         });
+
+        // start watching armada events if watcher thread does not exist in cloud instance
+        armadaCloud.getJobSetIdThreads().putIfAbsent(kubernetesSlave.getArmadaJobSetId(),
+            armadaCloud.startWatchingArmadaEvents(kubernetesSlave.getArmadaJobSetId()));
+
+        // Wait for the event to be recorded
+        await().atMost(60, TimeUnit.SECONDS).until(() -> matchedEvent.get() != null);
 
         JobRunningEvent event = matchedEvent.get();
         if (event == null) {
