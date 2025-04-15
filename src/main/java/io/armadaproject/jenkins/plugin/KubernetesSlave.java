@@ -89,6 +89,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
     private transient Pod pod;
 
     private String armadaJobId = "";
+    private String armadaJobSetId = "";
 
     @NonNull
     public PodTemplate getTemplate() throws IllegalStateException {
@@ -289,6 +290,14 @@ public class KubernetesSlave extends AbstractCloudSlave {
         this.armadaJobId = armadaJobId;
     }
 
+    public String getArmadaJobSetId() {
+        return armadaJobSetId;
+    }
+
+    public void setArmadaJobSetId(String armadaJobSetId) {
+        this.armadaJobSetId = armadaJobSetId;
+    }
+
     /**
      * Returns the cloud instance which created this agent.
      * @return the cloud instance which created this agent.
@@ -422,15 +431,17 @@ public class KubernetesSlave extends AbstractCloudSlave {
             ArmadaCloud armadaCloud = getKubernetesCloud();
             armadaClient.cancelJob(JobCancelRequest.newBuilder()
                     .setQueue(armadaCloud.getArmadaQueue())
-                    .setJobSetId(armadaCloud.getCompleteArmadaJobSetId())
+                    .setJobSetId(armadaJobSetId)
                     .setJobId(armadaJobId)
                 .build());
 
-            String msg = ("Cancelled job: " + armadaJobId);
+            String msg = ("Cancelled job id: " + armadaJobId + " with job set id: "
+                + armadaJobSetId);
             LOGGER.info(msg);
             listener.getLogger().println(msg);
         } else {
-            String msg = ("No jobs in running state for id: " + armadaJobId);
+            String msg = ("No jobs in running state for id: " + armadaJobId + " with job set id: "
+                + armadaJobSetId);
             LOGGER.log(Level.WARNING, msg);
             listener.error(msg);
         }

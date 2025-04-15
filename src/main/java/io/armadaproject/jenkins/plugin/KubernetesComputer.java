@@ -41,6 +41,7 @@ public class KubernetesComputer extends AbstractCloudComputer<KubernetesSlave> {
 
     private boolean launching;
     private String armadaJobId = "";
+    private String armadaJobSetId = "";
 
     public KubernetesComputer(KubernetesSlave slave) {
         super(slave);
@@ -209,6 +210,14 @@ public class KubernetesComputer extends AbstractCloudComputer<KubernetesSlave> {
 
     public void setArmadaJobId(String armadaJobId) {
         this.armadaJobId = armadaJobId;
+    }
+
+    public String getArmadaJobSetId() {
+        return armadaJobSetId;
+    }
+
+    public void setArmadaJobSetId(String armadaJobSetId) {
+        this.armadaJobSetId = armadaJobSetId;
     }
 
     @Override

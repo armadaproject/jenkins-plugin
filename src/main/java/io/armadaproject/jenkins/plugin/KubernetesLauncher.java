@@ -171,14 +171,18 @@ public class KubernetesLauncher extends JNLPLauncher {
                         + new SimpleDateFormat("-ddMMyyyy").format(new Date());
                     cloud.setArmadaJobSetId(newArmadaJobSetId);
 
+                    String completeArmadaJobSetId = cloud.getCompleteArmadaJobSetId();
                     ArmadaMapper armadaMapper = new ArmadaMapper(cloud.getArmadaQueue(),
-                        cloud.getArmadaNamespace(), cloud.getCompleteArmadaJobSetId(), pod);
+                        cloud.getArmadaNamespace(), completeArmadaJobSetId, pod);
 
                     JobSubmitResponse jobSubmitResponse = armadaClient.submitJob(
                         armadaMapper.createJobSubmitRequest());
                     String jobId = jobSubmitResponse.getJobResponseItems(0).getJobId();
                     kubernetesComputer.setArmadaJobId(jobId);
+                    kubernetesComputer.setArmadaJobSetId(completeArmadaJobSetId);
                     ((KubernetesSlave) computer.getNode()).setArmadaJobId(jobId);
+                    ((KubernetesSlave) computer.getNode())
+                        .setArmadaJobSetId(completeArmadaJobSetId);
                 } catch (KubernetesClientException e) {
                     Metrics.metricRegistry()
                             .counter(MetricNames.CREATION_FAILED)
