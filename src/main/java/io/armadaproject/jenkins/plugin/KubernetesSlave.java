@@ -401,8 +401,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
             return;
         }
 
-      try {
-          ArmadaClient armadaClient = cloud.connectToArmada();
+      try (ArmadaClient armadaClient = cloud.connectToArmada()) {
           deleteSlavePod(listener, armadaClient);
           Metrics.metricRegistry().counter(MetricNames.PODS_TERMINATED).inc();
 
