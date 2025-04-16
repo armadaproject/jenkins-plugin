@@ -28,9 +28,9 @@ import io.armadaproject.jenkins.plugin.KubernetesSlave;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 
 /**
@@ -69,18 +69,24 @@ class KubernetesNodeContext implements Serializable {
         ArmadaEventManager<JobRunningEvent> armadaEventManager =
             armadaCloud.getArmadaEventManager();
         AtomicReference<JobRunningEvent> matchedEvent = new AtomicReference<>();
-        armadaEventManager.subscribe(event -> {
+        Consumer<JobRunningEvent> consumer = event -> {
             if (event.getJobId().equals(kubernetesSlave.getArmadaJobId())) {
                 matchedEvent.set(event);
             }
-        });
+        };
+        armadaEventManager.subscribe(kubernetesSlave.getArmadaJobSetId(), consumer);
 
         // start watching armada events if watcher thread does not exist in cloud instance
         armadaCloud.getJobSetIdThreads().putIfAbsent(kubernetesSlave.getArmadaJobSetId(),
             armadaCloud.startWatchingArmadaEvents(kubernetesSlave.getArmadaJobSetId()));
 
-        // Wait for the event to be recorded
-        await().atMost(60, TimeUnit.SECONDS).until(() -> matchedEvent.get() != null);
+        try {
+            // Wait for the event to be recorded
+            await().atMost(60, TimeUnit.SECONDS).until(() -> matchedEvent.get() != null);
+        } catch (Exception e) {
+            // if the event is not found, swallow exception
+        }
+        armadaEventManager.unsubscribe(kubernetesSlave.getArmadaJobSetId(), consumer);
 
         JobRunningEvent event = matchedEvent.get();
         if (event == null) {

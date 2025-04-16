@@ -219,7 +219,7 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                       }
 
                       JobRunningEvent jobRunningEvent = message.getRunning();
-                      armadaEventManager.publish(jobRunningEvent);
+                      armadaEventManager.publish(jobSetId, jobRunningEvent);
                   }
 
                   @Override
