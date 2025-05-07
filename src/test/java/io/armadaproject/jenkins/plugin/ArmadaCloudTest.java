@@ -5,9 +5,11 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -308,5 +310,41 @@ public class ArmadaCloudTest {
             }
         }
         return null;
+    }
+
+    @Test
+    public void testArmadaJobSetIdRotation() {
+        ArmadaCloud armadaCloud = new ArmadaCloud("test");
+
+        String jobSetId = new SimpleDateFormat("-ddMMyyyy").format(new Date());
+        armadaCloud.setArmadaJobSetId(jobSetId);
+
+        assertEquals(jobSetId, armadaCloud.getCompleteArmadaJobSetId());
+
+        String newJobSetId = new SimpleDateFormat("-ddMMyyyy").format(
+            new Date(System.currentTimeMillis() + 86400000L)); // Add 1 day
+        armadaCloud.setArmadaJobSetId(newJobSetId);
+
+        assertEquals(newJobSetId, armadaCloud.getCompleteArmadaJobSetId());
+    }
+
+    @Test
+    public void testArmadaJobSetIdRotationWithPrefix() {
+        ArmadaCloud armadaCloud = new ArmadaCloud("test");
+
+        String jobSetId = new SimpleDateFormat("-ddMMyyyy").format(new Date());
+        armadaCloud.setArmadaJobSetId(jobSetId);
+        String jobSetIdPrefix = "prefix";
+        armadaCloud.setArmadaJobSetPrefix("prefix");
+
+        String expectedJobSetId = jobSetIdPrefix + "-" + jobSetId;
+        assertEquals(expectedJobSetId, armadaCloud.getCompleteArmadaJobSetId());
+
+        String newJobSetId = new SimpleDateFormat("-ddMMyyyy").format(
+            new Date(System.currentTimeMillis() + 86400000L)); // Add 1 day
+        armadaCloud.setArmadaJobSetId(newJobSetId);
+
+        expectedJobSetId = jobSetIdPrefix + "-" + newJobSetId;
+        assertEquals(expectedJobSetId, armadaCloud.getCompleteArmadaJobSetId());
     }
 }
