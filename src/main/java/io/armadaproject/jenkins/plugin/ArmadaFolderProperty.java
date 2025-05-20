@@ -32,7 +32,7 @@ import org.kohsuke.stapler.StaplerRequest;
 /**
  * Provides folder level Kubernetes configuration.
  */
-public class KubernetesFolderProperty extends AbstractFolderProperty<AbstractFolder<?>> {
+public class ArmadaFolderProperty extends AbstractFolderProperty<AbstractFolder<?>> {
 
     private static final String PREFIX_USAGE_PERMISSION = "usage-permission-";
 
@@ -42,7 +42,7 @@ public class KubernetesFolderProperty extends AbstractFolderProperty<AbstractFol
      * Constructor.
      */
     @DataBoundConstructor
-    public KubernetesFolderProperty() {}
+    public ArmadaFolderProperty() {}
 
     @DataBoundSetter
     public void setPermittedClouds(Collection<String> permittedClouds) {
@@ -60,13 +60,13 @@ public class KubernetesFolderProperty extends AbstractFolderProperty<AbstractFol
     }
 
     @SuppressWarnings({"rawtypes"})
-    public static boolean isAllowed(KubernetesSlave agent, Job job) {
+    public static boolean isAllowed(ArmadaSlave agent, Job job) {
         ItemGroup parent = job.getParent();
         Set<String> allowedClouds = new HashSet<>();
 
-        ArmadaCloud targetCloud = agent.getKubernetesCloud();
+        ArmadaCloud targetCloud = agent.getArmadaCloud();
         if (targetCloud.isUsageRestricted()) {
-            KubernetesFolderProperty.collectAllowedClouds(allowedClouds, parent);
+            ArmadaFolderProperty.collectAllowedClouds(allowedClouds, parent);
             return allowedClouds.contains(targetCloud.name);
         }
         return true;
@@ -115,11 +115,11 @@ public class KubernetesFolderProperty extends AbstractFolderProperty<AbstractFol
     public static void collectAllowedClouds(Set<String> allowedClouds, ItemGroup<?> itemGroup) {
         if (itemGroup instanceof AbstractFolder) {
             AbstractFolder<?> folder = (AbstractFolder<?>) itemGroup;
-            KubernetesFolderProperty kubernetesFolderProperty =
-                    folder.getProperties().get(KubernetesFolderProperty.class);
+            ArmadaFolderProperty armadaFolderProperty =
+                    folder.getProperties().get(ArmadaFolderProperty.class);
 
-            if (kubernetesFolderProperty != null) {
-                allowedClouds.addAll(kubernetesFolderProperty.getPermittedClouds());
+            if (armadaFolderProperty != null) {
+                allowedClouds.addAll(armadaFolderProperty.getPermittedClouds());
             }
 
             collectAllowedClouds(allowedClouds, folder.getParent());
@@ -194,7 +194,7 @@ public class KubernetesFolderProperty extends AbstractFolderProperty<AbstractFol
         @NonNull
         @Override
         public String getDisplayName() {
-            return Messages.KubernetesFolderProperty_displayName();
+            return Messages.ArmadaFolderProperty_displayName();
         }
 
         @SuppressWarnings("unused") // Used by jelly

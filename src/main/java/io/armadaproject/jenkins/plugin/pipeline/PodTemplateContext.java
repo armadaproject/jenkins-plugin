@@ -8,16 +8,10 @@ import java.io.Serializable;
 public class PodTemplateContext implements Serializable {
     private static final long serialVersionUID = 3065143885759619305L;
 
-    private final String namespace;
     private final String name;
 
-    public PodTemplateContext(String namespace, String name) {
-        this.namespace = namespace;
+    public PodTemplateContext(String name) {
         this.name = name;
-    }
-
-    public String getNamespace() {
-        return namespace;
     }
 
     public String getName() {

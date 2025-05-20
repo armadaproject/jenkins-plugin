@@ -3,9 +3,6 @@
   <f:entry field="cloud" title="${%Cloud to use}">
     <f:select/>
   </f:entry>
-  <f:entry field="namespace" title="${%Namespace}">
-    <f:textbox/>
-  </f:entry>
   <f:entry field="defaultContainer" title="${%Default container}">
     <f:textbox/>
   </f:entry>
@@ -26,9 +23,6 @@
   <f:advanced>
     <f:entry field="instanceCap" title="${%Max number of instances}">
       <f:textbox default="0"/>
-    </f:entry>
-    <f:entry title="${%Pod Retention}">
-      <f:dropdownDescriptorSelector field="podRetention" default="${descriptor.defaultPodRetention}"/>
     </f:entry>
     <f:entry field="supplementalGroups" title="${%Supplemental Groups}">
       <f:textbox/>

@@ -7,7 +7,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.armadaproject.jenkins.plugin.PodTemplate;
 import io.armadaproject.jenkins.plugin.PodTemplateBuilder;
 import org.junit.Before;
@@ -27,13 +27,13 @@ public class PodDecoratorTest {
     public MockitoRule mockitoRule = MockitoJUnit.rule();
 
     @Mock
-    private KubernetesSlave slave;
+    private ArmadaSlave slave;
 
     private ArmadaCloud cloud = new ArmadaCloud("test");
 
     @Before
     public void setUp() {
-        when(slave.getKubernetesCloud()).thenReturn(cloud);
+        when(slave.getArmadaCloud()).thenReturn(cloud);
     }
 
     @TestExtension("activeDecorator")

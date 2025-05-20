@@ -36,8 +36,8 @@ public class KubernetesQueueTaskDispatcherTest {
 
     private Folder folderA;
     private Folder folderB;
-    private KubernetesSlave slaveA;
-    private KubernetesSlave slaveB;
+    private ArmadaSlave slaveA;
+    private ArmadaSlave slaveB;
 
     public void setUpTwoClouds() throws Exception {
         folderA = new Folder(jenkins.jenkins, "A");
@@ -54,24 +54,24 @@ public class KubernetesQueueTaskDispatcherTest {
         jenkins.jenkins.clouds.add(cloudA);
         jenkins.jenkins.clouds.add(cloudB);
 
-        KubernetesFolderProperty property1 = new KubernetesFolderProperty();
+        ArmadaFolderProperty property1 = new ArmadaFolderProperty();
         folderA.addProperty(property1);
         JSONObject json1 = new JSONObject();
         json1.element("usage-permission-A", true);
         json1.element("usage-permission-B", false);
         folderA.addProperty(property1.reconfigure(null, json1));
 
-        KubernetesFolderProperty property2 = new KubernetesFolderProperty();
+        ArmadaFolderProperty property2 = new ArmadaFolderProperty();
         folderB.addProperty(property2);
         JSONObject json2 = new JSONObject();
         json2.element("usage-permission-A", false);
         json2.element("usage-permission-B", true);
         folderB.addProperty(property2.reconfigure(null, json2));
 
-        slaveA = new KubernetesSlave(
-                "A", new PodTemplate(), "testA", "A", "dockerA", new KubernetesLauncher(), RetentionStrategy.INSTANCE);
-        slaveB = new KubernetesSlave(
-                "B", new PodTemplate(), "testB", "B", "dockerB", new KubernetesLauncher(), RetentionStrategy.INSTANCE);
+        slaveA = new ArmadaSlave(
+                "A", new PodTemplate(), "testA", "A", "dockerA", new ArmadaLauncher(), RetentionStrategy.INSTANCE);
+        slaveB = new ArmadaSlave(
+                "B", new PodTemplate(), "testB", "B", "dockerB", new ArmadaLauncher(), RetentionStrategy.INSTANCE);
     }
 
     @Test
@@ -80,17 +80,17 @@ public class KubernetesQueueTaskDispatcherTest {
 
         FreeStyleProject projectA = folderA.createProject(FreeStyleProject.class, "buildJob");
         FreeStyleProject projectB = folderB.createProject(FreeStyleProject.class, "buildJob");
-        KubernetesQueueTaskDispatcher dispatcher = new KubernetesQueueTaskDispatcher();
+        ArmadaQueueTaskDispatcher dispatcher = new ArmadaQueueTaskDispatcher();
 
         assertNull(dispatcher.canTake(
                 slaveA,
                 new Queue.BuildableItem(new Queue.WaitingItem(Calendar.getInstance(), projectA, new ArrayList<>()))));
         assertTrue(
                 canTake(dispatcher, slaveB, projectA)
-                        instanceof KubernetesQueueTaskDispatcher.KubernetesCloudNotAllowed);
+                        instanceof ArmadaQueueTaskDispatcher.KubernetesCloudNotAllowed);
         assertTrue(
                 canTake(dispatcher, slaveA, projectB)
-                        instanceof KubernetesQueueTaskDispatcher.KubernetesCloudNotAllowed);
+                        instanceof ArmadaQueueTaskDispatcher.KubernetesCloudNotAllowed);
         assertNull(canTake(dispatcher, slaveB, projectB));
     }
 
@@ -102,9 +102,9 @@ public class KubernetesQueueTaskDispatcherTest {
         ArmadaCloud cloud = new ArmadaCloud("C");
         cloud.setUsageRestricted(false);
         jenkins.jenkins.clouds.add(cloud);
-        KubernetesQueueTaskDispatcher dispatcher = new KubernetesQueueTaskDispatcher();
-        KubernetesSlave slave = new KubernetesSlave(
-                "C", new PodTemplate(), "testC", "C", "dockerC", new KubernetesLauncher(), RetentionStrategy.INSTANCE);
+        ArmadaQueueTaskDispatcher dispatcher = new ArmadaQueueTaskDispatcher();
+        ArmadaSlave slave = new ArmadaSlave(
+                "C", new PodTemplate(), "testC", "C", "dockerC", new ArmadaLauncher(), RetentionStrategy.INSTANCE);
 
         assertNull(canTake(dispatcher, slave, project));
     }
@@ -113,7 +113,7 @@ public class KubernetesQueueTaskDispatcherTest {
     public void checkDumbSlave() throws Exception {
         DumbSlave slave = jenkins.createOnlineSlave();
         FreeStyleProject project = jenkins.createProject(FreeStyleProject.class);
-        KubernetesQueueTaskDispatcher dispatcher = new KubernetesQueueTaskDispatcher();
+        ArmadaQueueTaskDispatcher dispatcher = new ArmadaQueueTaskDispatcher();
 
         assertNull(canTake(dispatcher, slave, project));
     }
@@ -124,20 +124,20 @@ public class KubernetesQueueTaskDispatcherTest {
 
         WorkflowJob job = folderA.createProject(WorkflowJob.class, "pipeline");
         when(task.getOwnerTask()).thenReturn(job);
-        KubernetesQueueTaskDispatcher dispatcher = new KubernetesQueueTaskDispatcher();
+        ArmadaQueueTaskDispatcher dispatcher = new ArmadaQueueTaskDispatcher();
 
         assertNull(canTake(dispatcher, slaveA, task));
         assertTrue(
-                canTake(dispatcher, slaveB, task) instanceof KubernetesQueueTaskDispatcher.KubernetesCloudNotAllowed);
+                canTake(dispatcher, slaveB, task) instanceof ArmadaQueueTaskDispatcher.KubernetesCloudNotAllowed);
     }
 
-    private CauseOfBlockage canTake(KubernetesQueueTaskDispatcher dispatcher, Slave slave, Project project) {
+    private CauseOfBlockage canTake(ArmadaQueueTaskDispatcher dispatcher, Slave slave, Project project) {
         return dispatcher.canTake(
                 slave,
                 new Queue.BuildableItem(new Queue.WaitingItem(Calendar.getInstance(), project, new ArrayList<>())));
     }
 
-    private CauseOfBlockage canTake(KubernetesQueueTaskDispatcher dispatcher, Slave slave, Queue.Task task) {
+    private CauseOfBlockage canTake(ArmadaQueueTaskDispatcher dispatcher, Slave slave, Queue.Task task) {
         return dispatcher.canTake(
                 slave, new Queue.BuildableItem(new Queue.WaitingItem(Calendar.getInstance(), task, new ArrayList<>())));
     }

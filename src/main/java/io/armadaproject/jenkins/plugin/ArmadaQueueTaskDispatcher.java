@@ -10,15 +10,16 @@ import hudson.model.queue.QueueTaskDispatcher;
 
 @Extension
 @SuppressWarnings({"rawtypes"})
-public class KubernetesQueueTaskDispatcher extends QueueTaskDispatcher {
+public class ArmadaQueueTaskDispatcher extends QueueTaskDispatcher {
 
     @Override
     public CauseOfBlockage canTake(Node node, Queue.BuildableItem item) {
-        if (node instanceof KubernetesSlave) {
-            KubernetesSlave slave = (KubernetesSlave) node;
+        if (node instanceof ArmadaSlave) {
+            ArmadaSlave slave = (ArmadaSlave) node;
             Task ownerTask = item.task.getOwnerTask();
-            if (!KubernetesFolderProperty.isAllowed(slave, (Job) ownerTask)) {
-                return new KubernetesCloudNotAllowed(slave.getKubernetesCloud(), (Job) ownerTask);
+            slave.assignTask(item);
+            if (!ArmadaFolderProperty.isAllowed(slave, (Job) ownerTask)) {
+                return new KubernetesCloudNotAllowed(slave.getArmadaCloud(), (Job) ownerTask);
             }
         }
         return null;

@@ -1,9 +1,5 @@
 package io.armadaproject.jenkins.plugin;
 
-import api.Job.JobStatusRequest;
-import api.Job.JobStatusResponse;
-import api.SubmitOuterClass.JobCancelRequest;
-import api.SubmitOuterClass.JobState;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
@@ -16,7 +12,6 @@ import hudson.console.ModelHyperlinkNote;
 import hudson.model.Computer;
 import hudson.model.Descriptor;
 import hudson.model.Executor;
-import hudson.model.Label;
 import hudson.model.Node;
 import hudson.model.Queue;
 import hudson.model.TaskListener;
@@ -28,24 +23,23 @@ import hudson.slaves.CloudRetentionStrategy;
 import hudson.slaves.ComputerLauncher;
 import hudson.slaves.RetentionStrategy;
 import hudson.slaves.SlaveComputer;
-import io.armadaproject.ArmadaClient;
-import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
+import io.armadaproject.ClusterConfigParser;
+import io.armadaproject.jenkins.plugin.job.ArmadaState;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodSpec;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.IOException;
-import java.time.Instant;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
 import jenkins.metrics.api.Metrics;
 import jenkins.model.Jenkins;
 import jenkins.security.MasterToSlaveCallable;
@@ -61,12 +55,12 @@ import org.kohsuke.stapler.DataBoundConstructor;
 /**
  * @author Carlos Sanchez carlos@apache.org
  */
-public class KubernetesSlave extends AbstractCloudSlave {
+public class ArmadaSlave extends AbstractCloudSlave {
 
-    private static final Logger LOGGER = Logger.getLogger(KubernetesSlave.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(ArmadaSlave.class.getName());
 
     private static final Integer DISCONNECTION_TIMEOUT =
-            Integer.getInteger(KubernetesSlave.class.getName() + ".disconnectionTimeout", 5);
+            Integer.getInteger(ArmadaSlave.class.getName() + ".disconnectionTimeout", 5);
 
     private static final long serialVersionUID = -8642936855413034232L;
     private static final String DEFAULT_AGENT_PREFIX = "jenkins-agent";
@@ -90,6 +84,13 @@ public class KubernetesSlave extends AbstractCloudSlave {
 
     private String armadaJobId = "";
     private String armadaJobSetId = "";
+    private transient String serverUrl;
+    private transient String serverCertificate;
+    private String clusterId;
+    private String podName;
+
+    private transient Queue.Item item;
+    private transient PodSpec podSpec;
 
     @NonNull
     public PodTemplate getTemplate() throws IllegalStateException {
@@ -109,7 +110,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
     @CheckForNull
     public PodTemplate getTemplateOrNull() {
         if (template == null) {
-            template = getKubernetesCloud().getTemplateById(podTemplateId);
+            template = getArmadaCloud().getTemplateById(podTemplateId);
         }
         return template;
     }
@@ -156,55 +157,31 @@ public class KubernetesSlave extends AbstractCloudSlave {
      * @deprecated Use {@link Builder} instead.
      */
     @Deprecated
-    public KubernetesSlave(PodTemplate template, String nodeDescription, ArmadaCloud cloud, String labelStr)
-            throws Descriptor.FormException, IOException {
-
-        this(template, nodeDescription, cloud.name, labelStr, new OnceRetentionStrategy(cloud.getRetentionTimeout()));
-    }
-
-    /**
-     * @deprecated Use {@link Builder} instead.
-     */
-    @Deprecated
-    public KubernetesSlave(PodTemplate template, String nodeDescription, ArmadaCloud cloud, Label label)
-            throws Descriptor.FormException, IOException {
-        this(
-                template,
-                nodeDescription,
-                cloud.name,
-                label.toString(),
-                new OnceRetentionStrategy(cloud.getRetentionTimeout()));
-    }
-
-    /**
-     * @deprecated Use {@link Builder} instead.
-     */
-    @Deprecated
-    public KubernetesSlave(
-            PodTemplate template, String nodeDescription, ArmadaCloud cloud, String labelStr, RetentionStrategy rs)
-            throws Descriptor.FormException, IOException {
-        this(template, nodeDescription, cloud.name, labelStr, rs);
-    }
-
-    /**
-     * @deprecated Use {@link Builder} instead.
-     */
-    @Deprecated
     @DataBoundConstructor // make stapler happy. Not actually used.
-    public KubernetesSlave(
-            PodTemplate template, String nodeDescription, String cloudName, String labelStr, RetentionStrategy rs)
+    public ArmadaSlave(
+            PodTemplate template, String nodeDescription, String cloudName, String labelStr, RetentionStrategy rs,
+            String armadaJobSetId,
+            String armadaJobId,
+            String serverUrl,
+            String clusterId,
+            String podName)
             throws Descriptor.FormException, IOException {
-        this(getSlaveName(template), template, nodeDescription, cloudName, labelStr, new KubernetesLauncher(), rs);
+        this(getSlaveName(template), template, nodeDescription, cloudName, labelStr, new ArmadaLauncher(), rs, armadaJobSetId, armadaJobId, serverUrl, clusterId, podName);
     }
 
-    protected KubernetesSlave(
+    protected ArmadaSlave(
             String name,
             @NonNull PodTemplate template,
             String nodeDescription,
             String cloudName,
             String labelStr,
             ComputerLauncher computerLauncher,
-            RetentionStrategy rs)
+            RetentionStrategy rs,
+            String armadaJobSetId,
+            String armadaJobId,
+            String serverUrl,
+            String clusterId,
+            String podName)
             throws Descriptor.FormException, IOException {
         super(name, null, computerLauncher);
         setNodeDescription(nodeDescription);
@@ -216,6 +193,11 @@ public class KubernetesSlave extends AbstractCloudSlave {
         this.cloudName = cloudName;
         this.template = template;
         this.podTemplateId = template.getId();
+        this.armadaJobSetId = armadaJobSetId;
+        this.armadaJobId = armadaJobId;
+        this.serverUrl = serverUrl;
+        this.clusterId = clusterId;
+        this.podName = podName;
     }
 
     public String getCloudName() {
@@ -232,28 +214,36 @@ public class KubernetesSlave extends AbstractCloudSlave {
     }
 
     public String getPodName() {
+        return podName;
+    }
+
+    public String getAgentName() {
         return PodTemplateUtils.substituteEnv(getNodeName());
     }
 
     private String remoteFS;
+
+    public void setPodSpec(PodSpec podSpec) {
+        Optional<Container> optionalJnlp = podSpec.getContainers().stream()
+                .filter(c -> ArmadaCloud.JNLP_NAME.equals(c.getName()))
+                .findFirst();
+        if (optionalJnlp.isPresent()) {
+            remoteFS = StringUtils.defaultIfBlank(
+                    optionalJnlp.get().getWorkingDir(), ContainerTemplate.DEFAULT_WORKING_DIR);
+        }
+
+        this.podSpec = podSpec;
+    }
+
+    public PodSpec getPodSpec() {
+        return this.podSpec;
+    }
 
     @SuppressFBWarnings(
             value = "NM_CONFUSING",
             justification = "Naming confusion with a getRemoteFs method, but the latter is deprecated.")
     @Override
     public String getRemoteFS() {
-        if (remoteFS == null) {
-            Optional<Pod> optionalPod = getPod();
-            if (optionalPod.isPresent()) {
-                Optional<Container> optionalJnlp = optionalPod.get().getSpec().getContainers().stream()
-                        .filter(c -> ArmadaCloud.JNLP_NAME.equals(c.getName()))
-                        .findFirst();
-                if (optionalJnlp.isPresent()) {
-                    remoteFS = StringUtils.defaultIfBlank(
-                            optionalJnlp.get().getWorkingDir(), ContainerTemplate.DEFAULT_WORKING_DIR);
-                }
-            }
-        }
         return Util.fixNull(remoteFS);
     }
 
@@ -270,15 +260,15 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
     }
 
-    /**
-     * @deprecated Please use the strongly typed getKubernetesCloud() instead.
-     */
-    @Deprecated
-    public Cloud getCloud() {
-        return Jenkins.getInstance().getCloud(getCloudName());
-    }
-
     public Optional<Pod> getPod() {
+        if(pod == null) {
+            if (podName == null) {
+                return Optional.empty();
+            }
+
+            tryLoadPod();
+        }
+
         return Optional.ofNullable(pod);
     }
 
@@ -304,18 +294,32 @@ public class KubernetesSlave extends AbstractCloudSlave {
      * @throws IllegalStateException if the cloud doesn't exist anymore, or is not a {@link ArmadaCloud}.
      */
     @NonNull
-    public ArmadaCloud getKubernetesCloud() {
-        return getKubernetesCloud(getCloudName());
+    public ArmadaCloud getArmadaCloud() {
+        return getArmadaCloud(getCloudName());
     }
 
-    private static ArmadaCloud getKubernetesCloud(String cloudName) {
+    public KubernetesClient connect() throws KubernetesAuthException, IOException {
+        var serverUrl = getServerUrl();
+        var serverCertificate = getCaCertData();
+        LOGGER.log(Level.FINEST, "Building connection to Kubernetes {0} URL {1}", new String[] {
+                getDisplayName(), serverUrl
+        });
+        KubernetesClient client = KubernetesClientProvider.createClient(getArmadaCloud(), serverUrl, serverCertificate);
+
+        LOGGER.log(Level.FINE, "Connected to Kubernetes {0} URL {1} namespace {2}", new String[] {
+                getDisplayName(), client.getMasterUrl().toString(), client.getNamespace()
+        });
+        return client;
+    }
+
+    private static ArmadaCloud getArmadaCloud(String cloudName) {
         Cloud cloud = Jenkins.get().getCloud(cloudName);
         if (cloud instanceof ArmadaCloud) {
             return (ArmadaCloud) cloud;
         } else if (cloud == null) {
             throw new IllegalStateException("No such cloud " + cloudName);
         } else {
-            throw new IllegalStateException(KubernetesSlave.class.getName() + " can be launched only by instances of "
+            throw new IllegalStateException(ArmadaSlave.class.getName() + " can be launched only by instances of "
                     + ArmadaCloud.class.getName() + ". Cloud is "
                     + cloud.getClass().getName());
         }
@@ -339,28 +343,8 @@ public class KubernetesSlave extends AbstractCloudSlave {
     }
 
     @Override
-    public KubernetesComputer createComputer() {
-        return KubernetesComputerFactory.createInstance(this);
-    }
-
-    public PodRetention getPodRetention(ArmadaCloud cloud) {
-        PodRetention retentionPolicy = cloud.getPodRetention();
-        PodTemplate template = getTemplateOrNull();
-        if (template != null) {
-            PodRetention pr = template.getPodRetention();
-            // https://issues.jenkins-ci.org/browse/JENKINS-53260
-            // even though we default the pod template's retention
-            // strategy, there are various legacy paths for injecting
-            // pod templates where the
-            // value can still be null, so check for it here so
-            // as to not blow up termination path
-            // if (pr != null) {
-            retentionPolicy = pr;
-            // } else {
-            //    LOGGER.fine("Template pod retention policy was null");
-            // }
-        }
-        return retentionPolicy;
+    public ArmadaComputer createComputer() {
+        return ArmadaComputerFactory.createInstance(this);
     }
 
     @Override
@@ -369,7 +353,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
 
         ArmadaCloud cloud;
         try {
-            cloud = getKubernetesCloud();
+            cloud = getArmadaCloud();
         } catch (IllegalStateException e) {
             e.printStackTrace(
                     listener.fatalError(
@@ -410,40 +394,14 @@ public class KubernetesSlave extends AbstractCloudSlave {
             return;
         }
 
-      try (ArmadaClient armadaClient = cloud.connectToArmada()) {
-          deleteSlavePod(listener, armadaClient);
-          Metrics.metricRegistry().counter(MetricNames.PODS_TERMINATED).inc();
-
-          String msg = String.format("Disconnected computer %s", name);
-          LOGGER.log(Level.INFO, msg);
-          listener.getLogger().println(msg);
-      } catch (KubernetesAuthException e) {
-          LOGGER.warning("Failed to connect to Armada. There might be leftover jobs running.");
-      }
-    }
-
-    private void deleteSlavePod(TaskListener listener, ArmadaClient armadaClient) {
-        JobStatusResponse jobStatusResponse = armadaClient.getJobStatus(JobStatusRequest.newBuilder()
-            .addJobIds(armadaJobId)
-            .build());
-
-        if (jobStatusResponse.getJobStatesMap().get(armadaJobId) == JobState.RUNNING) {
-            ArmadaCloud armadaCloud = getKubernetesCloud();
-            armadaClient.cancelJob(JobCancelRequest.newBuilder()
-                    .setQueue(armadaCloud.getArmadaQueue())
-                    .setJobSetId(armadaJobSetId)
-                    .setJobId(armadaJobId)
-                .build());
-
-            String msg = ("Cancelled job id: " + armadaJobId + " with job set id: "
-                + armadaJobSetId);
-            LOGGER.info(msg);
-            listener.getLogger().println(msg);
-        } else {
-            String msg = ("No jobs in running state for id: " + armadaJobId + " with job set id: "
-                + armadaJobSetId);
-            LOGGER.log(Level.WARNING, msg);
-            listener.error(msg);
+        var jobManager = ArmadaState.getJobManager(cloud);
+        try {
+            if(armadaJobSetId != null && armadaJobId != null) {
+                jobManager.cancelJob(armadaJobSetId, armadaJobId);
+                Metrics.metricRegistry().counter(MetricNames.JOBS_CANCELLED).inc();
+            }
+        } catch (Throwable e) {
+            LOGGER.warning("Failed to connect to Armada. There might be leftover jobs running.");
         }
     }
 
@@ -457,7 +415,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
-        KubernetesSlave that = (KubernetesSlave) o;
+        ArmadaSlave that = (ArmadaSlave) o;
         return cloudName.equals(that.cloudName);
     }
 
@@ -486,8 +444,17 @@ public class KubernetesSlave extends AbstractCloudSlave {
         return launcher;
     }
 
-    void assignPod(@CheckForNull Pod pod) {
-        this.pod = pod;
+    public void assignPod(String podName) {
+        this.podName = podName;
+        tryLoadPod();
+    }
+
+    private void tryLoadPod() {
+        try {
+            this.pod = connect().pods().inNamespace(getNamespace()).withName(podName).item();
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void printAgentDescription(TaskListener listener) {
@@ -522,7 +489,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
 
     @Override
     protected Object readResolve() {
-        KubernetesSlave ks = (KubernetesSlave) super.readResolve();
+        ArmadaSlave ks = (ArmadaSlave) super.readResolve();
         ks.executables = new HashSet<>();
         return ks;
     }
@@ -535,41 +502,46 @@ public class KubernetesSlave extends AbstractCloudSlave {
         return new Builder();
     }
 
-    public void annotateTtl(TaskListener listener) {
-        try {
-            var kubernetesCloud = getKubernetesCloud();
-            Optional.ofNullable(kubernetesCloud.getGarbageCollection()).ifPresent(gc -> {
-                var ns = getNamespace();
-                var name = getPodName();
-                var l = Instant.now();
-                try {
-                    kubernetesCloud
-                            .connect()
-                            .pods()
-                            .inNamespace(ns)
-                            .withName(name)
-                            .patch("{\"metadata\":{\"annotations\":{\"" + GarbageCollection.ANNOTATION_LAST_REFRESH
-                                    + "\":\"" + l.toEpochMilli() + "\"}}}");
-                } catch (KubernetesAuthException e) {
-                    e.printStackTrace(listener.error("Failed to authenticate to Kubernetes cluster"));
-                } catch (IOException e) {
-                    e.printStackTrace(listener.error("Failed to connect to Kubernetes cluster"));
-                }
-                listener.getLogger().println("Annotated agent pod " + ns + "/" + name + " with TTL");
-                LOGGER.log(Level.FINE, () -> "Annotated agent pod " + ns + "/" + name + " with TTL");
-                try {
-                    save();
-                } catch (IOException e) {
-                    LOGGER.log(Level.WARNING, e, () -> "Failed to save");
-                }
-            });
-        } catch (RuntimeException e) {
-            e.printStackTrace(listener.error("Failed to annotate agent pod with TTL"));
+    public void setClusterId(String clusterId) {
+        this.clusterId = clusterId;
+    }
+
+    public String getCaCertData() {
+        ensureServerInfo();
+        return serverCertificate;
+    }
+
+    public String getServerUrl() {
+        ensureServerInfo();
+        return this.serverUrl;
+    }
+
+    private void ensureServerInfo() {
+        if(this.serverUrl == null) {
+            if (clusterId == null) {
+                throw new IllegalStateException("ClusterId is not set");
+            }
+
+            try {
+                var clusterData = ClusterConfigParser.parse(getArmadaCloud().getArmadaClusterConfigPath()).get(clusterId);
+                this.serverUrl = clusterData.getApiUrl();
+                this.serverCertificate = clusterData.getServerCertificate();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
+    public Queue.Item getItem() {
+        return item;
+    }
+
+    public void assignTask(Queue.Item task) {
+        this.item = task;
+    }
+
     /**
-     * Builds a {@link KubernetesSlave} instance.
+     * Builds a {@link ArmadaSlave} instance.
      */
     public static class Builder {
         private String name;
@@ -581,7 +553,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         private RetentionStrategy retentionStrategy;
 
         /**
-         * @param name The name of the future {@link KubernetesSlave}
+         * @param name The name of the future {@link ArmadaSlave}
          * @return the current instance for method chaining
          */
         public Builder name(String name) {
@@ -590,7 +562,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
 
         /**
-         * @param nodeDescription The node description of the future {@link KubernetesSlave}
+         * @param nodeDescription The node description of the future {@link ArmadaSlave}
          * @return the current instance for method chaining
          */
         public Builder nodeDescription(String nodeDescription) {
@@ -599,7 +571,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
 
         /**
-         * @param podTemplate The pod template the future {@link KubernetesSlave} has been created from
+         * @param podTemplate The pod template the future {@link ArmadaSlave} has been created from
          * @return the current instance for method chaining
          */
         public Builder podTemplate(PodTemplate podTemplate) {
@@ -608,7 +580,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
 
         /**
-         * @param cloud The cloud that is provisioning the {@link KubernetesSlave} instance.
+         * @param cloud The cloud that is provisioning the {@link ArmadaSlave} instance.
          * @return the current instance for method chaining
          */
         public Builder cloud(ArmadaCloud cloud) {
@@ -617,7 +589,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
 
         /**
-         * @param label The label the {@link KubernetesSlave} has.
+         * @param label The label the {@link ArmadaSlave} has.
          * @return the current instance for method chaining
          */
         public Builder label(String label) {
@@ -626,7 +598,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
 
         /**
-         * @param computerLauncher The computer launcher to use to launch the {@link KubernetesSlave} instance.
+         * @param computerLauncher The computer launcher to use to launch the {@link ArmadaSlave} instance.
          * @return the current instance for method chaining
          */
         public Builder computerLauncher(ComputerLauncher computerLauncher) {
@@ -635,7 +607,7 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
 
         /**
-         * @param retentionStrategy The retention strategy to use for the {@link KubernetesSlave} instance.
+         * @param retentionStrategy The retention strategy to use for the {@link ArmadaSlave} instance.
          * @return the current instance for method chaining
          */
         public Builder retentionStrategy(RetentionStrategy retentionStrategy) {
@@ -653,18 +625,18 @@ public class KubernetesSlave extends AbstractCloudSlave {
         }
 
         /**
-         * Builds the resulting {@link KubernetesSlave} instance.
-         * @return an initialized {@link KubernetesSlave} instance.
+         * Builds the resulting {@link ArmadaSlave} instance.
+         * @return an initialized {@link ArmadaSlave} instance.
          * @throws IOException
          * @throws Descriptor.FormException
          */
         @SuppressFBWarnings(
                 value = "UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR",
                 justification = "False positive. https://github.com/spotbugs/spotbugs/issues/567")
-        public KubernetesSlave build() throws IOException, Descriptor.FormException {
+        public ArmadaSlave build() throws IOException, Descriptor.FormException {
             Validate.notNull(podTemplate);
             Validate.notNull(cloud);
-            return new KubernetesSlave(
+            return new ArmadaSlave(
                     name == null ? getSlaveName(podTemplate) : name,
                     podTemplate,
                     nodeDescription == null ? podTemplate.getName() : nodeDescription,
@@ -673,14 +645,19 @@ public class KubernetesSlave extends AbstractCloudSlave {
                     decorateLauncher(
                             cloud,
                             computerLauncher == null
-                                    ? new KubernetesLauncher(cloud.getJenkinsTunnel(), null)
+                                    ? new ArmadaLauncher(cloud.getJenkinsTunnel(), null)
                                     : computerLauncher),
-                    retentionStrategy == null ? determineRetentionStrategy(cloud, podTemplate) : retentionStrategy);
+                    retentionStrategy == null ? determineRetentionStrategy(cloud, podTemplate) : retentionStrategy,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
         }
 
         private ComputerLauncher decorateLauncher(@NonNull ArmadaCloud cloud, @NonNull ComputerLauncher launcher) {
-            if (launcher instanceof KubernetesLauncher) {
-                ((KubernetesLauncher) launcher).setWebSocket(cloud.isWebSocket());
+            if (launcher instanceof ArmadaLauncher) {
+                ((ArmadaLauncher) launcher).setWebSocket(cloud.isWebSocket());
             }
             return launcher;
         }

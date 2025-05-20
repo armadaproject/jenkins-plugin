@@ -1,5 +1,4 @@
 podTemplate(
-    podRetention: never(),
     idleMinutes: 0,
     yaml: '''
 apiVersion: v1

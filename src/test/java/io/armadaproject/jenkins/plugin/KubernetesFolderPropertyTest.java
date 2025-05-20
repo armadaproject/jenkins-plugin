@@ -27,37 +27,37 @@ public class KubernetesFolderPropertyTest {
         j.jenkins.clouds.add(kube2);
 
         Folder folder = j.jenkins.createProject(Folder.class, "folder001");
-        KubernetesFolderProperty prop = new KubernetesFolderProperty();
+        ArmadaFolderProperty prop = new ArmadaFolderProperty();
         folder.addProperty(prop);
 
         Folder after = j.configRoundtrip(folder);
         assertThat(
                 "Property exists after saving",
-                after.getProperties().get(KubernetesFolderProperty.class),
+                after.getProperties().get(ArmadaFolderProperty.class),
                 notNullValue());
         assertThat(
                 "No selected clouds",
-                after.getProperties().get(KubernetesFolderProperty.class).getPermittedClouds(),
+                after.getProperties().get(ArmadaFolderProperty.class).getPermittedClouds(),
                 empty());
 
         folder.getProperties()
-                .get(KubernetesFolderProperty.class)
+                .get(ArmadaFolderProperty.class)
                 .setPermittedClouds(Collections.singletonList("kube1"));
         after = j.configRoundtrip(folder);
         assertThat(
                 "Kube1 cloud is added",
-                after.getProperties().get(KubernetesFolderProperty.class).getPermittedClouds(),
+                after.getProperties().get(ArmadaFolderProperty.class).getPermittedClouds(),
                 contains("kube1"));
 
         Folder subFolder = folder.createProject(Folder.class, "subfolder001");
-        KubernetesFolderProperty prop2 = new KubernetesFolderProperty();
+        ArmadaFolderProperty prop2 = new ArmadaFolderProperty();
         prop2.setPermittedClouds(Collections.singletonList("kube2"));
         subFolder.addProperty(prop2);
 
         after = j.configRoundtrip(subFolder);
         assertThat(
                 "Contains own and inherited cloud",
-                after.getProperties().get(KubernetesFolderProperty.class).getPermittedClouds(),
+                after.getProperties().get(ArmadaFolderProperty.class).getPermittedClouds(),
                 containsInAnyOrder("kube1", "kube2"));
     }
 }

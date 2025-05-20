@@ -26,7 +26,7 @@ public class DefaultInProvisioning extends InProvisioning {
     public Set<String> getInProvisioning(@CheckForNull Label label) {
         if (label != null) {
             return label.getNodes().stream()
-                    .filter(KubernetesSlave.class::isInstance)
+                    .filter(ArmadaSlave.class::isInstance)
                     .filter(DefaultInProvisioning::isNotAcceptingTasks)
                     .map(Node::getNodeName)
                     .collect(Collectors.toSet());

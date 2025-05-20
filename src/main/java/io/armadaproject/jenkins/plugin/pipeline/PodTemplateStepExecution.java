@@ -2,7 +2,6 @@ package io.armadaproject.jenkins.plugin.pipeline;
 
 import static java.util.stream.Collectors.toList;
 
-import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.AbortException;
@@ -13,7 +12,7 @@ import hudson.model.TaskListener;
 import hudson.slaves.Cloud;
 import io.armadaproject.jenkins.plugin.ContainerTemplate;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesFolderProperty;
+import io.armadaproject.jenkins.plugin.ArmadaFolderProperty;
 import io.armadaproject.jenkins.plugin.PodAnnotation;
 import io.armadaproject.jenkins.plugin.PodImagePullSecret;
 import io.armadaproject.jenkins.plugin.PodTemplate;
@@ -91,11 +90,9 @@ public class PodTemplateStepExecution extends AbstractStepExecutionImpl {
             stepName = label;
         }
         String name = String.format(NAME_FORMAT, stepName, randString);
-        String namespace = checkNamespace(cloud, podTemplateContext);
 
         newTemplate = new PodTemplate();
         newTemplate.setName(name);
-        newTemplate.setNamespace(namespace);
 
         if (step.getInheritFrom() == null) {
             newTemplate.setInheritFrom(PodTemplateUtils.emptyToNull(parentTemplates));
@@ -143,7 +140,6 @@ public class PodTemplateStepExecution extends AbstractStepExecutionImpl {
         }
         newTemplate.setAgentInjection(step.isAgentInjection());
         newTemplate.setAgentContainer(step.getAgentContainer());
-        newTemplate.setPodRetention(step.getPodRetention());
 
         if (step.getActiveDeadlineSeconds() != 0) {
             newTemplate.setActiveDeadlineSeconds(step.getActiveDeadlineSeconds());
@@ -166,7 +162,7 @@ public class PodTemplateStepExecution extends AbstractStepExecutionImpl {
         cloud.addDynamicTemplate(newTemplate);
         BodyInvoker invoker = getContext()
                 .newBodyInvoker()
-                .withContexts(step, new PodTemplateContext(namespace, name))
+                .withContexts(step, new PodTemplateContext(name))
                 .withCallback(new PodTemplateCallback(newTemplate, cloudName));
         if (step.getLabel() == null) {
             invoker.withContext(EnvironmentExpander.merge(
@@ -215,23 +211,10 @@ public class PodTemplateStepExecution extends AbstractStepExecutionImpl {
         ItemGroup<?> parent = job.getParent(); // Get the Parent of the Job (which might be a Folder)
 
         Set<String> allowedClouds = new HashSet<>();
-        KubernetesFolderProperty.collectAllowedClouds(allowedClouds, parent);
+        ArmadaFolderProperty.collectAllowedClouds(allowedClouds, parent);
         if (!allowedClouds.contains(armadaCloud.name)) {
             throw new AbortException(String.format("Not authorized to use Kubernetes cloud: %s", step.getCloud()));
         }
-    }
-
-    private String checkNamespace(
-            ArmadaCloud armadaCloud, @CheckForNull PodTemplateContext podTemplateContext) {
-        String namespace = null;
-        if (!PodTemplateUtils.isNullOrEmpty(step.getNamespace())) {
-            namespace = step.getNamespace();
-        } else if (podTemplateContext != null && !PodTemplateUtils.isNullOrEmpty(podTemplateContext.getNamespace())) {
-            namespace = podTemplateContext.getNamespace();
-        } else {
-            namespace = armadaCloud.getNamespace();
-        }
-        return namespace;
     }
 
     /**

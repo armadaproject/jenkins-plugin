@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
 import io.armadaproject.jenkins.plugin.ContainerEnvVar;
 import io.armadaproject.jenkins.plugin.ContainerTemplate;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesComputer;
+import io.armadaproject.jenkins.plugin.ArmadaComputer;
 import io.armadaproject.jenkins.plugin.KubernetesTestUtil;
 import io.armadaproject.jenkins.plugin.PodTemplate;
 import io.armadaproject.jenkins.plugin.PodUtils;
@@ -220,10 +220,10 @@ public abstract class AbstractKubernetesPipelineTest {
     }
 
     @NonNull
-    protected List<KubernetesComputer> getKubernetesComputers() {
+    protected List<ArmadaComputer> getKubernetesComputers() {
         return Arrays.stream(r.jenkins.getComputers())
-                .filter(c -> c instanceof KubernetesComputer)
-                .map(KubernetesComputer.class::cast)
+                .filter(c -> c instanceof ArmadaComputer)
+                .map(ArmadaComputer.class::cast)
                 .collect(Collectors.toList());
     }
 }

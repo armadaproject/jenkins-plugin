@@ -8,13 +8,16 @@ import hudson.XmlFile;
 import hudson.model.Saveable;
 import hudson.model.listeners.SaveableListener;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import java.io.IOException;
+
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuthException;
 import org.kohsuke.accmod.Restricted;
@@ -36,7 +39,7 @@ public class KubernetesClientProvider {
             KubernetesClientProvider.class.getPackage().getName() + ".clients.cacheExpiration",
             TimeUnit.MINUTES.toSeconds(10));
 
-    private static final Cache<String, Client> clients = Caffeine.newBuilder()
+    private static final Cache<CacheKey, Client> clients = Caffeine.newBuilder()
             .expireAfterWrite(CACHE_EXPIRATION, TimeUnit.SECONDS)
             .removalListener((key, value, cause) -> {
                 Client client = (Client) value;
@@ -49,37 +52,15 @@ public class KubernetesClientProvider {
 
     private KubernetesClientProvider() {}
 
-    static KubernetesClient createClient(ArmadaCloud cloud) throws KubernetesAuthException, IOException {
-        String displayName = cloud.getDisplayName();
-        final Client c = clients.getIfPresent(displayName);
-        if (c == null) {
-            KubernetesClient client = new KubernetesFactoryAdapter(
-                            cloud.getServerUrl(),
-                            cloud.getNamespace(),
-                            cloud.getServerCertificate(),
-                            cloud.getCredentialsId(),
-                            cloud.isSkipTlsVerify(),
-                            cloud.getConnectTimeout(),
-                            cloud.getReadTimeout(),
-                            cloud.getMaxRequestsPerHost(),
-                            cloud.isUseJenkinsProxy())
-                    .createClient();
-            clients.put(displayName, new Client(getValidity(cloud), client));
-            LOGGER.log(Level.FINE, "Created new Kubernetes client: {0} {1}", new Object[] {displayName, client});
-            return client;
-        }
-        return c.getClient();
-    }
-
-    static KubernetesClient createClient(ArmadaCloud cloud, String serverUrl, String namespace)
+    static KubernetesClient createClient(ArmadaCloud cloud, String serverUrl, String caCertData)
         throws KubernetesAuthException {
-        String displayName = cloud.getDisplayName();
-        final Client c = clients.getIfPresent(displayName);
+        CacheKey cacheKey = new CacheKey(cloud.getDisplayName(), serverUrl, caCertData);
+        final Client c = clients.getIfPresent(cacheKey);
         if (c == null) {
             KubernetesClient client = new KubernetesFactoryAdapter(
                 serverUrl,
-                namespace,
-                cloud.getServerCertificate(),
+                cloud.getArmadaNamespace(),
+                    caCertData,
                 cloud.getCredentialsId(),
                 cloud.isSkipTlsVerify(),
                 cloud.getConnectTimeout(),
@@ -87,8 +68,8 @@ public class KubernetesClientProvider {
                 cloud.getMaxRequestsPerHost(),
                 cloud.isUseJenkinsProxy())
                 .createClient();
-            clients.put(displayName, new Client(getValidity(cloud), client));
-            LOGGER.log(Level.FINE, "Created new Kubernetes client: {0} {1}", new Object[] {displayName, client});
+            clients.put(cacheKey, new Client(getValidity(cloud, serverUrl, caCertData), client));
+            LOGGER.log(Level.FINE, "Created new Kubernetes client: {0} {1}", new Object[] {cacheKey, client});
             return client;
         }
         return c.getClient();
@@ -101,11 +82,11 @@ public class KubernetesClientProvider {
      * @return client validity hash code
      */
     @Restricted(NoExternalUse.class)
-    public static int getValidity(@NonNull ArmadaCloud cloud) {
+    public static int getValidity(@NonNull ArmadaCloud cloud, String serverUrl, String caCertData) {
         Object[] cloudObjects = {
-            cloud.getServerUrl(),
-            cloud.getNamespace(),
-            cloud.getServerCertificate(),
+                serverUrl,
+            cloud.getArmadaNamespace(),
+                caCertData,
             cloud.getCredentialsId(),
             cloud.isSkipTlsVerify(),
             cloud.getConnectTimeout(),
@@ -134,9 +115,33 @@ public class KubernetesClientProvider {
         }
     }
 
+    public static class CacheKey {
+        private final String cloudDisplayName;
+        private final String serverUrl;
+        private final String caCertData;
+
+        public CacheKey(String cloudDisplayName, String serverUrl, String caCertData) {
+            this.cloudDisplayName = cloudDisplayName;
+            this.serverUrl = serverUrl;
+            this.caCertData = caCertData;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof CacheKey)) return false;
+            CacheKey cacheKey = (CacheKey) o;
+            return Objects.equals(cloudDisplayName, cacheKey.cloudDisplayName) && Objects.equals(serverUrl, cacheKey.serverUrl) && Objects.equals(caCertData, cacheKey.caCertData);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(cloudDisplayName, serverUrl, caCertData);
+        }
+    }
+
     @Restricted(NoExternalUse.class) // testing only
-    public static void invalidate(String displayName) {
-        clients.invalidate(displayName);
+    public static void invalidate(CacheKey cacheKey) {
+        clients.invalidate(cacheKey);
     }
 
     @Restricted(NoExternalUse.class) // testing only
@@ -151,20 +156,26 @@ public class KubernetesClientProvider {
         public void onChange(Saveable o, XmlFile file) {
             if (o instanceof Jenkins) {
                 Jenkins jenkins = (Jenkins) o;
-                Set<String> cloudDisplayNames = new HashSet<>(clients.asMap().keySet());
+                Set<CacheKey> cacheKeys = new HashSet<>(clients.asMap().keySet());
                 for (ArmadaCloud cloud : jenkins.clouds.getAll(ArmadaCloud.class)) {
                     String displayName = cloud.getDisplayName();
-                    Client client = clients.getIfPresent(displayName);
-                    if (client == null || client.getValidity() == getValidity(cloud)) {
-                        cloudDisplayNames.remove(displayName);
+                    Set<CacheKey> cloudCacheKeys = cacheKeys.stream()
+                            .filter(c -> displayName.equals(c.cloudDisplayName))
+                            .collect(Collectors.toSet());
+
+                    for(CacheKey cacheKey : cloudCacheKeys) {
+                        Client client = clients.getIfPresent(cacheKey);
+                        if (client == null || client.getValidity() == getValidity(cloud, cacheKey.serverUrl, cacheKey.caCertData)) {
+                            cacheKeys.remove(cacheKey);
+                        }
                     }
                 }
                 // Remove missing / invalid clients
-                for (String displayName : cloudDisplayNames) {
+                for (CacheKey cacheKey : cacheKeys) {
                     LOGGER.log(
                             Level.INFO,
-                            () -> "Invalidating Kubernetes client: " + displayName + clients.getIfPresent(displayName));
-                    invalidate(displayName);
+                            () -> "Invalidating Kubernetes client: " + cacheKey.cloudDisplayName + "-" + cacheKey.serverUrl + clients.getIfPresent(cacheKey));
+                    invalidate(cacheKey);
                 }
             }
             super.onChange(o, file);

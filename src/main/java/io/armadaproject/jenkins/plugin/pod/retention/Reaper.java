@@ -19,62 +19,49 @@ package io.armadaproject.jenkins.plugin.pod.retention;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
-import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
-import hudson.XmlFile;
 import hudson.model.Computer;
 import hudson.model.Node;
-import hudson.model.Saveable;
 import hudson.model.TaskListener;
-import hudson.model.listeners.ItemListener;
-import hudson.model.listeners.SaveableListener;
 import hudson.slaves.ComputerListener;
 import hudson.slaves.EphemeralNode;
 import hudson.slaves.OfflineCause;
-import io.armadaproject.jenkins.plugin.KubernetesClientProvider;
-import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesComputer;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaComputer;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.armadaproject.jenkins.plugin.PodUtils;
 import io.fabric8.kubernetes.api.model.ContainerStateTerminated;
 import io.fabric8.kubernetes.api.model.ContainerStateWaiting;
 import io.fabric8.kubernetes.api.model.ContainerStatus;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodStatus;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.Watch;
 import io.fabric8.kubernetes.client.Watcher;
-import io.fabric8.kubernetes.client.WatcherException;
+
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import jenkins.model.Jenkins;
-import jenkins.util.Listeners;
 import jenkins.util.SystemProperties;
 import jenkins.util.Timer;
 import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuthException;
 
 /**
- * Checks for deleted pods corresponding to {@link KubernetesSlave} and ensures the node is removed from Jenkins too.
+ * Checks for deleted pods corresponding to {@link ArmadaSlave} and ensures the node is removed from Jenkins too.
  * <p>If the pod has been deleted, all of the associated state (running user processes, workspace, etc.) must also be gone;
  * so there is no point in retaining this agent definition any further.
- * ({@link KubernetesSlave} is not an {@link EphemeralNode}: it <em>does</em> support running across Jenkins restarts.)
+ * ({@link ArmadaSlave} is not an {@link EphemeralNode}: it <em>does</em> support running across Jenkins restarts.)
  * <p>Note that pod retention policies other than the default {@link Never} may disable this system,
  * unless some external process or garbage collection policy results in pod deletion.
  */
@@ -83,17 +70,6 @@ public class Reaper extends ComputerListener {
 
     private static final Logger LOGGER = Logger.getLogger(Reaper.class.getName());
 
-    /**
-     * Only useful for tests which shutdown Jenkins without terminating the JVM.
-     * Close the watch so that we don't end up with spam in logs
-     */
-    @Extension
-    public static class ReaperShutdownListener extends ItemListener {
-        @Override
-        public void onBeforeShutdown() {
-            Reaper.getInstance().closeAllWatchers();
-        }
-    }
 
     public static Reaper getInstance() {
         return ExtensionList.lookupSingleton(Reaper.class);
@@ -105,26 +81,13 @@ public class Reaper extends ComputerListener {
      */
     private final AtomicBoolean activated = new AtomicBoolean();
 
-    private final Map<String, CloudPodWatcher> watchers = new ConcurrentHashMap<>();
-
     private final LoadingCache<String, Set<String>> terminationReasons =
             Caffeine.newBuilder().expireAfterAccess(1, TimeUnit.DAYS).build(k -> new ConcurrentSkipListSet<>());
 
     @Override
     public void preLaunch(Computer c, TaskListener taskListener) throws IOException, InterruptedException {
-        if (c instanceof KubernetesComputer) {
+        if (c instanceof ArmadaComputer) {
             Timer.get().schedule(this::maybeActivate, 10, TimeUnit.SECONDS);
-
-            // ensure associated cloud is being watched. the watch may have been closed due to exception or
-            // failure to register on initial activation.
-            KubernetesSlave node = ((KubernetesComputer) c).getNode();
-            if (node != null && !isWatchingCloud(node.getCloudName())) {
-                try {
-                    watchCloud(node.getKubernetesCloud());
-                } catch (IllegalStateException ise) {
-                    LOGGER.log(Level.WARNING, ise, () -> "kubernetes cloud not found: " + node.getCloudName());
-                }
-            }
         }
     }
 
@@ -140,22 +103,19 @@ public class Reaper extends ComputerListener {
         // (We may have missed deletion events while Jenkins was shut off,
         // or pods may have been deleted before any Kubernetes agent was brought online.)
         reapAgents();
-
-        // Now set up a watch for any subsequent pod deletions.
-        watchClouds();
     }
 
     /**
-     * Remove any {@link KubernetesSlave} nodes that reference Pods that don't exist.
+     * Remove any {@link ArmadaSlave} nodes that reference Pods that don't exist.
      */
     private void reapAgents() {
         Jenkins jenkins = Jenkins.getInstanceOrNull();
         if (jenkins != null) {
             for (Node n : new ArrayList<>(jenkins.getNodes())) {
-                if (!(n instanceof KubernetesSlave)) {
+                if (!(n instanceof ArmadaSlave)) {
                     continue;
                 }
-                KubernetesSlave ks = (KubernetesSlave) n;
+                ArmadaSlave ks = (ArmadaSlave) n;
                 if (ks.getLauncher().isLaunchSupported()) {
                     // Being launched, don't touch it.
                     continue;
@@ -169,8 +129,7 @@ public class Reaper extends ComputerListener {
                     // yet we do not want to do an unnamespaced pod list for RBAC reasons.
                     // Could use a hybrid approach: first list all pods in the configured namespace for all clouds;
                     // then go back and individually check any unmatched agents with their configured namespace.
-                    ArmadaCloud cloud = ks.getKubernetesCloud();
-                    if (cloud.connect().pods().inNamespace(ns).withName(name).get() == null) {
+                    if (ks.connect().pods().inNamespace(ns).withName(name).get() == null) {
                         LOGGER.info(() -> ns + "/" + name
                                 + " seems to have been deleted, so removing corresponding Jenkins agent");
                         jenkins.removeNode(ks);
@@ -184,186 +143,14 @@ public class Reaper extends ComputerListener {
         }
     }
 
-    /**
-     * Create watchers for each configured {@link ArmadaCloud} in Jenkins and remove any existing watchers
-     * for clouds that have been removed. If a {@link ArmadaCloud} client configuration property has been
-     * updated a new watcher will be created to replace the existing one.
-     */
-    private void watchClouds() {
-        Jenkins jenkins = Jenkins.getInstanceOrNull();
-        if (jenkins != null) {
-            Set<String> cloudNames = new HashSet<>(this.watchers.keySet());
-            for (ArmadaCloud kc : jenkins.clouds.getAll(ArmadaCloud.class)) {
-                watchCloud(kc);
-                cloudNames.remove(kc.name);
-            }
-
-            // close any cloud watchers that have been removed
-            cloudNames.stream().map(this.watchers::get).filter(Objects::nonNull).forEach(cpw -> {
-                LOGGER.info(() -> "stopping pod watcher for deleted kubernetes cloud " + cpw.cloudName);
-                cpw.stop();
-            });
-        }
-    }
-
-    /**
-     * Register {@link CloudPodWatcher} for the given cloud if one does not exist or if the existing watcher
-     * is no longer valid.
-     * @param kc kubernetes cloud to watch
-     */
-    private void watchCloud(@NonNull ArmadaCloud kc) {
-        // can't use ConcurrentHashMap#computeIfAbsent because CloudPodWatcher will remove itself from the watchers
-        // map on close. If an error occurs when creating the watch it would create a deadlock situation.
-        CloudPodWatcher watcher = new CloudPodWatcher(kc);
-        if (!isCloudPodWatcherActive(watcher)) {
-            try {
-                KubernetesClient client = kc.connect();
-                watcher.watch = client.pods().inNamespace(client.getNamespace()).watch(watcher);
-                CloudPodWatcher old = watchers.put(kc.name, watcher);
-                // if another watch slipped in then make sure it stopped
-                if (old != null) {
-                    old.stop();
-                }
-                LOGGER.info(() -> "set up watcher on " + kc.getDisplayName());
-            } catch (KubernetesAuthException | IOException | RuntimeException x) {
-                LOGGER.log(Level.WARNING, x, () -> "failed to set up watcher on " + kc.getDisplayName());
-            }
-        }
-    }
-
-    /**
-     * Check if the cloud is watched for Pod events.
-     * @param name cloud name
-     * @return true if a watcher has been registered for the given cloud
-     */
-    boolean isWatchingCloud(String name) {
-        return watchers.get(name) != null;
-    }
-
-    public Map<String, ?> getWatchers() {
-        return watchers;
-    }
-
-    /**
-     * Check if the given cloud pod watcher exists and is still valid. Watchers may become invalid
-     * of the kubernetes client configuration changes.
-     * @param watcher watcher to check
-     * @return true if the provided watcher already exists and is valid, false otherwise
-     */
-    private boolean isCloudPodWatcherActive(@NonNull CloudPodWatcher watcher) {
-        CloudPodWatcher existing = watchers.get(watcher.cloudName);
-        return existing != null && existing.clientValidity == watcher.clientValidity;
-    }
-
-    private static Optional<KubernetesSlave> resolveNode(@NonNull Jenkins jenkins, String namespace, String name) {
+    private static Optional<ArmadaSlave> resolveNode(@NonNull Jenkins jenkins, String namespace, String name) {
         return new ArrayList<>(jenkins.getNodes())
                 .stream()
-                        .filter(KubernetesSlave.class::isInstance)
-                        .map(KubernetesSlave.class::cast)
+                        .filter(ArmadaSlave.class::isInstance)
+                        .map(ArmadaSlave.class::cast)
                         .filter(ks ->
                                 Objects.equals(ks.getNamespace(), namespace) && Objects.equals(ks.getPodName(), name))
                         .findFirst();
-    }
-
-    /**
-     * Stop all watchers
-     */
-    private void closeAllWatchers() {
-        // on close each watcher should remove itself from the watchers map (see CloudPodWatcher#onClose)
-        watchers.values().forEach(CloudPodWatcher::stop);
-    }
-
-    /**
-     * Kubernetes pod event watcher for a Kubernetes Cloud. Notifies {@link Listener}
-     * extensions on Pod events. The default Kubernetes client watch manager will
-     * attempt to reconnect on connection errors. If the watch api returns "410 Gone"
-     * then the Watch will close itself with a WatchException and this watcher will
-     * deregister itself.
-     */
-    private class CloudPodWatcher implements Watcher<Pod> {
-        private final String cloudName;
-        private final int clientValidity;
-
-        @CheckForNull
-        private Watch watch;
-
-        CloudPodWatcher(@NonNull ArmadaCloud cloud) {
-            this.cloudName = cloud.name;
-            this.clientValidity = KubernetesClientProvider.getValidity(cloud);
-        }
-
-        @Override
-        public void eventReceived(Action action, Pod pod) {
-            // don't send bookmark event to listeners as they don't represent change in pod state
-            if (action == Action.BOOKMARK) {
-                // TODO future enhancement might be to keep track of bookmarks for better reconnect behavior. Would
-                //      likely have to track based on cloud address/namespace in case cloud was renamed or namespace
-                //      is changed.
-                return;
-            }
-
-            // If there was a non-success http response code from watch request
-            // or the api returned a Status object the watch manager notifies with
-            // an error action and null resource.
-            if (action == Action.ERROR && pod == null) {
-                return;
-            }
-
-            Jenkins jenkins = Jenkins.getInstanceOrNull();
-            if (jenkins == null) {
-                return;
-            }
-
-            String ns = pod.getMetadata().getNamespace();
-            String name = pod.getMetadata().getName();
-            Optional<KubernetesSlave> optionalNode = resolveNode(jenkins, ns, name);
-            if (!optionalNode.isPresent()) {
-                return;
-            }
-
-            Listeners.notify(Listener.class, true, listener -> {
-                try {
-                    Set<String> terminationReasons = Reaper.this.terminationReasons.get(
-                            optionalNode.get().getNodeName());
-                    listener.onEvent(
-                            action,
-                            optionalNode.get(),
-                            pod,
-                            terminationReasons != null ? terminationReasons : Collections.emptySet());
-                } catch (Exception x) {
-                    LOGGER.log(Level.WARNING, "Listener " + listener + " failed for " + ns + "/" + name, x);
-                }
-            });
-        }
-
-        /**
-         * Close the associated {@link Watch} handle. This should be used shutdown/stop the watch. It will cause the
-         * watch manager to call this classes {@link #onClose()} method.
-         */
-        void stop() {
-            if (watch != null) {
-                LOGGER.info("Stopping watch for kubernetes cloud " + cloudName);
-                this.watch.close();
-            }
-        }
-
-        @Override
-        public void onClose() {
-            LOGGER.fine(() -> cloudName + " watcher closed");
-            // remove self from watchers list
-            Reaper.this.watchers.remove(cloudName, this);
-        }
-
-        @Override
-        public void onClose(WatcherException e) {
-            // usually triggered because of "410 Gone" responses
-            // https://kubernetes.io/docs/reference/using-api/api-concepts/#410-gone-responses
-            // "Gone" may be returned if the resource version requested is older than the server
-            // has retained.
-            LOGGER.log(Level.WARNING, e, () -> cloudName + " watcher closed with exception");
-            // remove self from watchers list
-            Reaper.this.watchers.remove(cloudName, this);
-        }
     }
 
     /**
@@ -396,7 +183,7 @@ public class Reaper extends ComputerListener {
          */
         void onEvent(
                 @NonNull Watcher.Action action,
-                @NonNull KubernetesSlave node,
+                @NonNull ArmadaSlave node,
                 @NonNull Pod pod,
                 @NonNull Set<String> terminationReasons)
                 throws IOException, InterruptedException;
@@ -407,7 +194,7 @@ public class Reaper extends ComputerListener {
         @Override
         public void onEvent(
                 @NonNull Watcher.Action action,
-                @NonNull KubernetesSlave node,
+                @NonNull ArmadaSlave node,
                 @NonNull Pod pod,
                 @NonNull Set<String> terminationReasons)
                 throws IOException {
@@ -429,7 +216,7 @@ public class Reaper extends ComputerListener {
         @Override
         public void onEvent(
                 @NonNull Watcher.Action action,
-                @NonNull KubernetesSlave node,
+                @NonNull ArmadaSlave node,
                 @NonNull Pod pod,
                 @NonNull Set<String> terminationReasons)
                 throws IOException, InterruptedException {
@@ -482,7 +269,7 @@ public class Reaper extends ComputerListener {
         @Override
         public void onEvent(
                 @NonNull Watcher.Action action,
-                @NonNull KubernetesSlave node,
+                @NonNull ArmadaSlave node,
                 @NonNull Pod pod,
                 @NonNull Set<String> terminationReasons)
                 throws IOException, InterruptedException {
@@ -511,7 +298,7 @@ public class Reaper extends ComputerListener {
     }
 
     private static void logAndCleanUp(
-            KubernetesSlave node,
+            ArmadaSlave node,
             Pod pod,
             Set<String> terminationReasons,
             String reason,
@@ -545,10 +332,10 @@ public class Reaper extends ComputerListener {
         disconnectComputer(node, cause);
     }
 
-    private static void logLastLinesThenTerminateNode(KubernetesSlave node, Pod pod, TaskListener runListener)
+    private static void logLastLinesThenTerminateNode(ArmadaSlave node, Pod pod, TaskListener runListener)
             throws IOException, InterruptedException {
         try {
-            String lines = PodUtils.logLastLines(pod, node.getKubernetesCloud().connect());
+            String lines = PodUtils.logLastLines(pod, node.connect());
             if (lines != null) {
                 runListener.getLogger().print(lines);
             }
@@ -561,12 +348,12 @@ public class Reaper extends ComputerListener {
 
     /**
      * Disconnect computer associated with the given node. Should be called AFTER terminate so the offline cause
-     * takes precedence over the one set by {@link KubernetesSlave#terminate()} (via {@link jenkins.model.Nodes#removeNode(Node)}).
+     * takes precedence over the one set by {@link ArmadaSlave#terminate()} (via {@link jenkins.model.Nodes#removeNode(Node)}).
      * @see Computer#disconnect(OfflineCause)
      * @param node node to disconnect
      * @param cause reason for offline
      */
-    private static void disconnectComputer(KubernetesSlave node, OfflineCause cause) {
+    private static void disconnectComputer(ArmadaSlave node, OfflineCause cause) {
         Computer computer = node.getComputer();
         if (computer != null) {
             computer.disconnect(cause);
@@ -591,7 +378,7 @@ public class Reaper extends ComputerListener {
         @Override
         public void onEvent(
                 @NonNull Watcher.Action action,
-                @NonNull KubernetesSlave node,
+                @NonNull ArmadaSlave node,
                 @NonNull Pod pod,
                 @NonNull Set<String> terminationReasons)
                 throws IOException, InterruptedException {
@@ -629,23 +416,6 @@ public class Reaper extends ComputerListener {
                             .error("Image pull backoff detected, waiting for image to be available. Will wait for "
                                     + (BACKOFF_EVENTS_LIMIT - backOffNumber)
                                     + " more events before terminating the node.");
-                }
-            }
-        }
-    }
-
-    /**
-     * {@link SaveableListener} that will update cloud watchers when Jenkins configuration is updated.
-     */
-    @Extension
-    public static class ReaperSaveableListener extends SaveableListener {
-        @Override
-        public void onChange(Saveable o, XmlFile file) {
-            if (o instanceof Jenkins) {
-                Reaper reaper = Reaper.getInstance();
-                // only update if reaper has been activated to avoid hitting api server if not in use
-                if (reaper.activated.get()) {
-                    Reaper.getInstance().watchClouds();
                 }
             }
         }

@@ -1,13 +1,8 @@
 package io.armadaproject.jenkins.plugin;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.lang.StringUtils.isEmpty;
 import static io.armadaproject.jenkins.plugin.KubernetesFactoryAdapter.resolveCredentials;
 
-import api.EventOuterClass.EventMessage;
-import api.EventOuterClass.EventStreamMessage;
-import api.EventOuterClass.JobRunningEvent;
-import api.EventOuterClass.JobSetRequest;
 import api.Health.HealthCheckResponse.ServingStatus;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
@@ -23,7 +18,6 @@ import hudson.Util;
 import hudson.init.InitMilestone;
 import hudson.init.Initializer;
 import hudson.model.Descriptor;
-import hudson.model.DescriptorVisibilityFilter;
 import hudson.model.Item;
 import hudson.model.ItemGroup;
 import hudson.model.Label;
@@ -36,52 +30,38 @@ import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import hudson.util.XStream2;
 import io.armadaproject.ArmadaClient;
-import io.armadaproject.jenkins.plugin.pod.retention.Default;
-import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
-import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientException;
-import io.fabric8.kubernetes.client.VersionInfo;
-import io.grpc.stub.StreamObserver;
+
 import java.io.IOException;
 import java.io.StringReader;
-import java.net.ConnectException;
 import java.net.MalformedURLException;
-import java.net.SocketTimeoutException;
 import java.net.URL;
-import java.net.UnknownHostException;
-import java.security.PublicKey;
-import java.security.UnrecoverableKeyException;
-import java.security.cert.Certificate;
-import java.security.interfaces.DSAPublicKey;
-import java.security.interfaces.ECPublicKey;
-import java.security.interfaces.RSAPublicKey;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.servlet.ServletException;
+
+import io.armadaproject.jenkins.plugin.job.ArmadaClientParameters;
+import io.armadaproject.jenkins.plugin.job.ArmadaJobSetStrategy;
+import io.armadaproject.jenkins.plugin.job.ArmadaState;
+import io.armadaproject.jenkins.plugin.job.DailyArmadaJobSetStrategy;
 import jenkins.authentication.tokens.api.AuthenticationTokens;
-import jenkins.bouncycastle.api.PEMEncodable;
 import jenkins.metrics.api.Metrics;
 import jenkins.model.Jenkins;
 import jenkins.model.JenkinsLocationConfiguration;
 import jenkins.security.FIPS140;
 import jenkins.util.SystemProperties;
 import jenkins.websocket.WebSockets;
+import net.bytebuddy.implementation.bytecode.Throw;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import io.armadaproject.jenkins.plugin.pipeline.PodTemplateMap;
 import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuth;
-import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuthException;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 import org.kohsuke.accmod.Restricted;
@@ -135,23 +115,16 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private String armadaLookoutUrl;
     private String armadaLookoutPort;
     private String armadaJobSetPrefix;
-    private String armadaJobSetId;
     private String armadaClusterConfigPath;
-    private transient ConcurrentHashMap<String, Thread> jobSetIdThreads;
-    private transient ArmadaEventManager<JobRunningEvent> armadaEventManager;
+    private ArmadaJobSetStrategy armadaJobSetStrategy;
 
-    private String serverUrl;
     private boolean useJenkinsProxy;
-
-    @CheckForNull
-    private String serverCertificate;
 
     private boolean skipTlsVerify;
     private boolean addMasterProxyEnvVars;
 
     private boolean capOnlyOnAlivePods;
 
-    private String namespace;
     private String jnlpregistry;
     private boolean restrictedPssSecurityContext = false;
     private boolean webSocket;
@@ -180,70 +153,14 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     // Integer to differentiate null from 0
     private Integer waitForPodSec = DEFAULT_WAIT_FOR_POD_SEC;
 
-    @CheckForNull
-    private PodRetention podRetention = PodRetention.getKubernetesCloudDefault();
-
-    @CheckForNull
-    private GarbageCollection garbageCollection;
-
     @DataBoundConstructor
     public ArmadaCloud(String name) {
         super(name);
         setMaxRequestsPerHost(DEFAULT_MAX_REQUESTS_PER_HOST);
-        armadaJobSetId = name + new SimpleDateFormat("-ddMMyyyy").format(new Date());
     }
 
-    // TODO add mechanics for stop watching
-    public Thread startWatchingArmadaEvents(String jobSetId) {
-        Runnable job = () -> {
-          try (ArmadaClient armadaClient = connectToArmada()) {
-              JobSetRequest jobSetRequest = JobSetRequest.newBuilder()
-                  .setId(jobSetId)
-                  .setQueue(getArmadaQueue())
-                  .setWatch(true)
-                  .build();
-
-              StreamObserver<EventStreamMessage> streamObserver = new StreamObserver<>() {
-                  @Override
-                  public void onNext(EventStreamMessage value) {
-                      // TODO change log level to FINE
-                      LOGGER.log(Level.INFO,
-                          "event received for jobSetId: " + jobSetId + " message: " + value);
-                      if (!value.hasMessage()) {
-                          return;
-                      }
-
-                      EventMessage message = value.getMessage();
-                      if (!message.hasRunning()) {
-                          return;
-                      }
-
-                      JobRunningEvent jobRunningEvent = message.getRunning();
-                      armadaEventManager.publish(jobSetId, jobRunningEvent);
-                  }
-
-                  @Override
-                  public void onError(Throwable t) {
-                      LOGGER.log(Level.SEVERE,
-                          "error received for jobSetId: " + jobSetId + " error: " +t);
-                  }
-
-                  @Override
-                  public void onCompleted() {
-                      LOGGER.info("streaming completed for jobSetId: " + jobSetId);
-                  }
-              };
-
-              armadaClient.streamEvents(jobSetRequest, streamObserver);
-          } catch (KubernetesAuthException e) {
-              LOGGER.log(Level.SEVERE,
-                  "Failed to connect to Armada. Could not start watching events.");
-          }
-        };
-        Thread watcher = new Thread(job);
-        jobSetIdThreads.put(jobSetId, watcher);
-        watcher.start();
-        return watcher;
+    public ArmadaJobSetStrategy getJobSetStrategy() {
+        return armadaJobSetStrategy;
     }
 
     /**
@@ -272,8 +189,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     public ArmadaCloud(
             String name,
             List<? extends PodTemplate> templates,
-            String serverUrl,
-            String namespace,
             String jenkinsUrl,
             String containerCapStr,
             int connectTimeout,
@@ -281,8 +196,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
             int retentionTimeout) {
         this(name);
 
-        setServerUrl(serverUrl);
-        setNamespace(namespace);
         setJenkinsUrl(jenkinsUrl);
         if (templates != null) {
             this.templates.addAll(templates);
@@ -412,21 +325,13 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     }
 
     public String getArmadaJobSetPrefix() {
-        return StringUtils.isBlank(armadaJobSetPrefix) ? "" : armadaJobSetPrefix + "-";
+        return armadaJobSetPrefix;
     }
 
     @DataBoundSetter
     public void setArmadaJobSetPrefix(String armadaJobSetPrefix) {
         this.armadaJobSetPrefix = armadaJobSetPrefix;
-    }
-
-    public String getArmadaJobSetId() {
-        return armadaJobSetId;
-    }
-
-    @DataBoundSetter
-    public void setArmadaJobSetId(String armadaJobSetId) {
-        this.armadaJobSetId = armadaJobSetId;
+        this.armadaJobSetStrategy = new DailyArmadaJobSetStrategy(getArmadaJobSetPrefix() + "-" + getDisplayName());
     }
 
     public String getArmadaClusterConfigPath() {
@@ -436,26 +341,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     @DataBoundSetter
     public void setArmadaClusterConfigPath(String armadaClusterConfigPath) {
         this.armadaClusterConfigPath = armadaClusterConfigPath;
-    }
-
-    public String getServerUrl() {
-        return serverUrl;
-    }
-
-    @DataBoundSetter
-    public void setServerUrl(@NonNull String serverUrl) {
-        ensureKubernetesUrlInFipsMode(serverUrl);
-        this.serverUrl = Util.fixEmpty(serverUrl);
-    }
-
-    public String getServerCertificate() {
-        return serverCertificate;
-    }
-
-    @DataBoundSetter
-    public void setServerCertificate(String serverCertificate) {
-        ensureServerCertificateInFipsMode(serverCertificate);
-        this.serverCertificate = Util.fixEmpty(serverCertificate);
     }
 
     public boolean isSkipTlsVerify() {
@@ -475,15 +360,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     @DataBoundSetter
     public void setAddMasterProxyEnvVars(boolean addMasterProxyEnvVars) {
         this.addMasterProxyEnvVars = addMasterProxyEnvVars;
-    }
-
-    public String getNamespace() {
-        return namespace;
-    }
-
-    @DataBoundSetter
-    public void setNamespace(String namespace) {
-        this.namespace = Util.fixEmpty(namespace);
     }
 
     public String getJnlpregistry() {
@@ -518,15 +394,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     @Deprecated
     public boolean isCapOnlyOnAlivePods() {
         return capOnlyOnAlivePods;
-    }
-
-    public GarbageCollection getGarbageCollection() {
-        return garbageCollection;
-    }
-
-    @DataBoundSetter
-    public void setGarbageCollection(GarbageCollection garbageCollection) {
-        this.garbageCollection = garbageCollection;
     }
 
     /**
@@ -723,64 +590,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         this.connectTimeout = Math.max(DEFAULT_CONNECT_TIMEOUT_SECONDS, connectTimeout);
     }
 
-    /**
-     * Gets the global pod retention policy for the plugin.
-     */
-    public PodRetention getPodRetention() {
-        return this.podRetention;
-    }
-
-    /**
-     * Set the global pod retention policy for the plugin.
-     *
-     * @param podRetention the pod retention policy for the plugin.
-     */
-    @DataBoundSetter
-    public void setPodRetention(PodRetention podRetention) {
-        if (podRetention == null || podRetention instanceof Default) {
-            podRetention = PodRetention.getKubernetesCloudDefault();
-        }
-        this.podRetention = podRetention;
-    }
-
-    /**
-     * Connects to Kubernetes.
-     *
-     * @return Kubernetes client.
-     */
-    @SuppressFBWarnings({"IS2_INCONSISTENT_SYNC", "DC_DOUBLECHECK"})
-    public KubernetesClient connect() throws KubernetesAuthException, IOException {
-
-        LOGGER.log(Level.FINEST, "Building connection to Kubernetes {0} URL {1} namespace {2}", new String[] {
-            getDisplayName(), serverUrl, namespace
-        });
-        KubernetesClient client = KubernetesClientProvider.createClient(this);
-
-        LOGGER.log(Level.FINE, "Connected to Kubernetes {0} URL {1} namespace {2}", new String[] {
-            getDisplayName(), client.getMasterUrl().toString(), namespace
-        });
-        return client;
-    }
-
-    /**
-     * Connects to Kubernetes.
-     *
-     * @return Kubernetes client.
-     */
-    @SuppressFBWarnings({"IS2_INCONSISTENT_SYNC", "DC_DOUBLECHECK"})
-    public KubernetesClient connect(String serverUrl, String namespace) throws KubernetesAuthException, IOException {
-
-        LOGGER.log(Level.FINEST, "Building connection to Kubernetes {0} URL {1} namespace {2}", new String[] {
-            getDisplayName(), serverUrl, namespace
-        });
-        KubernetesClient client = KubernetesClientProvider.createClient(this, serverUrl, namespace);
-
-        LOGGER.log(Level.FINE, "Connected to Kubernetes {0} URL {1} namespace {2}", new String[] {
-            getDisplayName(), client.getMasterUrl().toString(), namespace
-        });
-        return client;
-    }
-
     @Override
     public Collection<NodeProvisioner.PlannedNode> provision(
             @NonNull final Cloud.CloudState state, final int excessWorkload) {
@@ -824,22 +633,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
             }
             Metrics.metricRegistry().counter(MetricNames.PROVISION_NODES).inc(plannedNodes.size());
             return plannedNodes;
-        } catch (KubernetesClientException e) {
-            Metrics.metricRegistry().counter(MetricNames.PROVISION_FAILED).inc();
-            Throwable cause = e.getCause();
-            if (cause instanceof SocketTimeoutException
-                    || cause instanceof ConnectException
-                    || cause instanceof UnknownHostException) {
-                LOGGER.log(Level.WARNING, "Failed to connect to Kubernetes at {0}: {1}", new String[] {
-                    serverUrl, cause.getMessage()
-                });
-            } else {
-                LOGGER.log(
-                        Level.WARNING,
-                        "Failed to count the # of live instances on Kubernetes",
-                        cause != null ? cause : e);
-            }
-            limitRegistrationResults.unregister();
         } catch (Exception e) {
             Metrics.metricRegistry().counter(MetricNames.PROVISION_FAILED).inc();
             LOGGER.log(Level.WARNING, "Failed to count the # of live instances on Kubernetes", e);
@@ -870,50 +663,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private static void ensureSkipTlsVerifyInFipsMode(boolean skipTlsVerify) {
         if (FIPS140.useCompliantAlgorithms() && skipTlsVerify) {
             throw new IllegalArgumentException(Messages.KubernetesCloud_skipTlsVerifyNotAllowedInFIPSMode());
-        }
-    }
-
-    /**
-     * Checks if server certificate is allowed if FIPS mode.
-     * Allowed certificates use a public key with the following algorithms and sizes:
-     * <ul>
-     *     <li>DSA with key size >= 2048</li>
-     *     <li>RSA with key size >= 2048</li>
-     *     <li>Elliptic curve (ED25519) with field size >= 224</li>
-     * </ul>
-     * If certificate is valid and allowed or not in FIPS mode method will just exit.
-     * If not it will throw an {@link IllegalArgumentException}.
-     * @param serverCertificate String containing the certificate PEM.
-     */
-    private static void ensureServerCertificateInFipsMode(String serverCertificate) {
-        if (!FIPS140.useCompliantAlgorithms()) {
-            return;
-        }
-        if (StringUtils.isBlank(serverCertificate)) {
-            return; // JENKINS-73789, no certificate is accepted
-        }
-        try {
-            PEMEncodable pem = PEMEncodable.decode(serverCertificate);
-            Certificate cert = pem.toCertificate();
-            if (cert == null) {
-                throw new IllegalArgumentException(Messages.KubernetesCloud_serverCertificateNotACertificate());
-            }
-            PublicKey publicKey = cert.getPublicKey();
-            if (publicKey instanceof RSAPublicKey) {
-                if (((RSAPublicKey) publicKey).getModulus().bitLength() < 2048) {
-                    throw new IllegalArgumentException(Messages.KubernetesCloud_serverCertificateKeySize());
-                }
-            } else if (publicKey instanceof DSAPublicKey) {
-                if (((DSAPublicKey) publicKey).getParams().getP().bitLength() < 2048) {
-                    throw new IllegalArgumentException(Messages.KubernetesCloud_serverCertificateKeySize());
-                }
-            } else if (publicKey instanceof ECPublicKey) {
-                if (((ECPublicKey) publicKey).getParams().getCurve().getField().getFieldSize() < 224) {
-                    throw new IllegalArgumentException(Messages.KubernetesCloud_serverCertificateKeySizeEC());
-                }
-            }
-        } catch (RuntimeException | UnrecoverableKeyException | IOException e) {
-            throw new IllegalArgumentException(e.getMessage(), e);
         }
     }
 
@@ -1039,17 +788,12 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 && maxRequestsPerHost == that.maxRequestsPerHost
                 && Objects.equals(defaultsProviderTemplate, that.defaultsProviderTemplate)
                 && templates.equals(that.templates)
-                && Objects.equals(serverUrl, that.serverUrl)
-                && Objects.equals(serverCertificate, that.serverCertificate)
-                && Objects.equals(namespace, that.namespace)
                 && Objects.equals(jnlpregistry, that.jnlpregistry)
                 && Objects.equals(jenkinsUrl, that.jenkinsUrl)
                 && Objects.equals(jenkinsTunnel, that.jenkinsTunnel)
                 && Objects.equals(credentialsId, that.credentialsId)
                 && Objects.equals(getPodLabels(), that.getPodLabels())
-                && Objects.equals(podRetention, that.podRetention)
                 && Objects.equals(waitForPodSec, that.waitForPodSec)
-                && Objects.equals(garbageCollection, that.garbageCollection)
                 && useJenkinsProxy == that.useJenkinsProxy;
     }
 
@@ -1059,12 +803,9 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 name,
                 defaultsProviderTemplate,
                 templates,
-                serverUrl,
-                serverCertificate,
                 skipTlsVerify,
                 addMasterProxyEnvVars,
                 capOnlyOnAlivePods,
-                namespace,
                 jnlpregistry,
                 jenkinsUrl,
                 jenkinsTunnel,
@@ -1076,9 +817,7 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 podLabels,
                 usageRestricted,
                 maxRequestsPerHost,
-                podRetention,
-                useJenkinsProxy,
-                garbageCollection);
+                useJenkinsProxy);
     }
 
     public Integer getWaitForPodSec() {
@@ -1088,30 +827,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     @DataBoundSetter
     public void setWaitForPodSec(Integer waitForPodSec) {
         this.waitForPodSec = waitForPodSec;
-    }
-
-    public ArmadaClient connectToArmada() throws KubernetesAuthException {
-        if (StringUtils.isNotBlank(armadaCredentialsId)) {
-            return secureArmadaConnection(armadaCredentialsId);
-        }
-
-        return unsecureArmadaConnection();
-    }
-
-    public ArmadaClient secureArmadaConnection(String armadaCredentialsId)
-        throws KubernetesAuthException {
-        StandardCredentials standardCredentials = resolveCredentials(armadaCredentialsId);
-        if (!(standardCredentials instanceof StringCredentials)) {
-            throw new KubernetesAuthException("credentials not a string credentials");
-        }
-
-        String secret = ((StringCredentials) standardCredentials).getSecret().getPlainText();
-
-        return new ArmadaClient(armadaUrl, Integer.parseInt(armadaPort), secret);
-    }
-
-    public ArmadaClient unsecureArmadaConnection() {
-        return new ArmadaClient(armadaUrl, Integer.parseInt(armadaPort));
     }
 
     @Restricted(NoExternalUse.class) // jelly
@@ -1132,24 +847,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         j.save();
         // take the user back.
         return FormApply.success("templates");
-    }
-
-    public ConcurrentHashMap<String, Thread> getJobSetIdThreads() {
-        // after jenkins is restarted some added fields are not initialized, this fixes it
-        if (jobSetIdThreads == null) {
-            jobSetIdThreads = new ConcurrentHashMap<>();
-        }
-
-        return jobSetIdThreads;
-    }
-
-    public ArmadaEventManager<JobRunningEvent> getArmadaEventManager() {
-        // after jenkins is restarted some added fields are not initialized, this fixes it
-        if (armadaEventManager == null) {
-            armadaEventManager = new ArmadaEventManager<>();
-        }
-
-        return armadaEventManager;
     }
 
     @Extension
@@ -1174,55 +871,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
 
         @RequirePOST
         @SuppressWarnings("unused") // used by jelly
-        public FormValidation doTestConnection(
-                @QueryParameter String name,
-                @QueryParameter String serverUrl,
-                @QueryParameter String credentialsId,
-                @QueryParameter String serverCertificate,
-                @QueryParameter boolean skipTlsVerify,
-                @QueryParameter String namespace,
-                @QueryParameter int connectionTimeout,
-                @QueryParameter int readTimeout,
-                @QueryParameter boolean useJenkinsProxy)
-                throws Exception {
-            Jenkins.get().checkPermission(Jenkins.MANAGE);
-
-            if (StringUtils.isBlank(name)) return FormValidation.error("name is required");
-
-            try (KubernetesClient client = new KubernetesFactoryAdapter(
-                            serverUrl,
-                            namespace,
-                            Util.fixEmpty(serverCertificate),
-                            Util.fixEmpty(credentialsId),
-                            skipTlsVerify,
-                            connectionTimeout,
-                            readTimeout,
-                            DEFAULT_MAX_REQUESTS_PER_HOST,
-                            useJenkinsProxy)
-                    .createClient()) {
-                // test listing pods
-                client.pods().list();
-                VersionInfo version = client.getVersion();
-                return FormValidation.ok("Connected to Kubernetes " + version.getGitVersion());
-            } catch (KubernetesClientException e) {
-                LOGGER.log(Level.FINE, String.format("Error testing connection %s", serverUrl), e);
-                return FormValidation.error(
-                        "Error testing connection %s: %s",
-                        serverUrl,
-                        e.getCause() == null
-                                ? e.getMessage()
-                                : String.format(
-                                        "%s: %s",
-                                        e.getCause().getClass().getName(),
-                                        e.getCause().getMessage()));
-            } catch (Exception e) {
-                LOGGER.log(Level.FINE, String.format("Error testing connection %s", serverUrl), e);
-                return FormValidation.error("Error testing connection %s: %s", serverUrl, e.getMessage());
-            }
-        }
-
-        @RequirePOST
-        @SuppressWarnings("unused") // used by jelly
         @SuppressFBWarnings("REC_CATCH_EXCEPTION")
         public FormValidation doTestArmadaConnection(@QueryParameter String armadaUrl,
             @QueryParameter String armadaPort, @QueryParameter String armadaCredentialsId)
@@ -1236,52 +884,22 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 return FormValidation.error("armadaPort is required");
             }
 
-            ArmadaClient armadaClient = null;
-            try {
-                if (StringUtils.isBlank(armadaCredentialsId)) {
-                    armadaClient = new ArmadaClient(armadaUrl, Integer.parseInt(armadaPort));
-                } else {
-                    StandardCredentials standardCredentials = resolveCredentials(
-                        Util.fixEmpty(armadaCredentialsId));
-                    if (Objects.nonNull(standardCredentials)
-                        && !(standardCredentials instanceof StringCredentials)) {
-                        String message = String.format(
-                            "Error testing Armada connection url:%s, port:%s, cause: credentials not a string credentials",
-                            armadaUrl, armadaPort);
-                        LOGGER.log(Level.FINE, message);
-                        return FormValidation.error(message);
-                    }
-
-                    StringCredentials stringCredentials = (StringCredentials) standardCredentials;
-                    if (Objects.isNull(stringCredentials)) {
-                        String message = String.format(
-                            "Error testing Armada connection url:%s, port:%s, cause: string credentials null",
-                            armadaUrl, armadaPort);
-                        LOGGER.log(Level.FINE, message);
-                        return FormValidation.error(message);
-                    }
-                    String secret = stringCredentials.getSecret().getPlainText();
-
-                    armadaClient = new ArmadaClient(armadaUrl, Integer.parseInt(armadaPort),
-                        secret);
-                }
-
-                if (ServingStatus.SERVING == armadaClient.checkHealth()) {
+            var parameters = new ArmadaClientParameters(armadaUrl, Integer.parseInt(armadaPort), null, null, armadaCredentialsId, null);
+            try(var client = ArmadaState.createClient(parameters)) {
+                if (ServingStatus.SERVING == client.checkHealth()) {
                     return FormValidation.ok("Connected to Armada");
                 }
 
                 return FormValidation.error("Connection to Armada failed %s:%s", armadaUrl,
-                    armadaPort);
-            } catch (Exception e) {
+                        armadaPort);
+            } catch(Throwable t) {
                 LOGGER.log(Level.FINE,
-                    String.format("Error testing Armada connection %s:%s", armadaUrl, armadaPort),
-                    e);
+                        String.format("Error testing Armada connection %s:%s", armadaUrl, armadaPort),
+                        t);
+                var cause = t.getCause();
                 return FormValidation.error(
-                    "Error testing Armada connection url:%s, port:%s, cause:%s", armadaUrl,
-                    armadaPort, e.getCause().toString());
-            } finally {
-              assert armadaClient != null;
-              armadaClient.close();
+                        "Error testing Armada connection url:%s, port:%s, cause:%s", armadaUrl,
+                        armadaPort, cause == null ? t.toString() : cause.toString());
             }
         }
 
@@ -1294,31 +912,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 ensureSkipTlsVerifyInFipsMode(skipTlsVerify);
             } catch (IllegalArgumentException ex) {
                 return FormValidation.error(ex, ex.getLocalizedMessage());
-            }
-            return FormValidation.ok();
-        }
-
-        @RequirePOST
-        @SuppressWarnings({"unused", "lgtm[jenkins/csrf]"
-        }) // used by jelly and already fixed jenkins security scan warning
-        public FormValidation doCheckServerCertificate(@QueryParameter String serverCertificate) {
-            Jenkins.get().checkPermission(Jenkins.MANAGE);
-            try {
-                ensureServerCertificateInFipsMode(serverCertificate);
-            } catch (IllegalArgumentException ex) {
-                return FormValidation.error(ex, ex.getLocalizedMessage());
-            }
-            return FormValidation.ok();
-        }
-
-        @RequirePOST
-        @SuppressWarnings("unused") // used by jelly
-        public FormValidation doCheckServerUrl(@QueryParameter String serverUrl) {
-            Jenkins.get().checkPermission(Jenkins.MANAGE);
-            try {
-                ensureKubernetesUrlInFipsMode(serverUrl);
-            } catch (IllegalArgumentException ex) {
-                return FormValidation.error(ex.getLocalizedMessage());
             }
             return FormValidation.ok();
         }
@@ -1477,25 +1070,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         }
 
         @SuppressWarnings("unused") // used by jelly
-        public List<Descriptor<PodRetention>> getAllowedPodRetentions() {
-            Jenkins jenkins = Jenkins.getInstanceOrNull();
-            if (jenkins == null) {
-                return new ArrayList<>(0);
-            }
-            return DescriptorVisibilityFilter.apply(this, jenkins.getDescriptorList(PodRetention.class));
-        }
-
-        @SuppressWarnings({"rawtypes", "unused"}) // used by jelly
-        public Descriptor getDefaultPodRetention() {
-            Jenkins jenkins = Jenkins.getInstanceOrNull();
-            if (jenkins == null) {
-                return null;
-            }
-            return jenkins.getDescriptor(
-                    PodRetention.getKubernetesCloudDefault().getClass());
-        }
-
-        @SuppressWarnings("unused") // used by jelly
         public int getDefaultReadTimeout() {
             return DEFAULT_READ_TIMEOUT_SECONDS;
         }
@@ -1517,14 +1091,11 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
 
     @Override
     public String toString() {
-        return "KubernetesCloud{name=" + name + ", defaultsProviderTemplate='"
+        return "ArmadaCloud{name=" + name + ", defaultsProviderTemplate='"
                 + defaultsProviderTemplate + '\'' + ", serverUrl='"
-                + serverUrl + '\'' + ", serverCertificate='"
-                + serverCertificate + '\'' + ", skipTlsVerify="
                 + skipTlsVerify + ", addMasterProxyEnvVars="
                 + addMasterProxyEnvVars + ", capOnlyOnAlivePods="
-                + capOnlyOnAlivePods + ", namespace='"
-                + namespace + '\'' + ", jnlpregistry='"
+                + capOnlyOnAlivePods +  ", jnlpregistry='"
                 + jnlpregistry + '\'' + ", jenkinsUrl='"
                 + jenkinsUrl + '\'' + ", jenkinsTunnel='"
                 + jenkinsTunnel + '\'' + ", credentialsId='"
@@ -1538,44 +1109,9 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 + podLabels + ", usageRestricted="
                 + usageRestricted + ", maxRequestsPerHost="
                 + maxRequestsPerHost + ", waitForPodSec="
-                + waitForPodSec + ", podRetention="
-                + podRetention + ", useJenkinsProxy="
+                + waitForPodSec +  ", useJenkinsProxy="
                 + useJenkinsProxy + ", templates="
-                + templates + ", garbageCollection="
-                + garbageCollection + '}';
-    }
-
-    private Object readResolve() {
-        if ((serverCertificate != null) && !serverCertificate.trim().startsWith("-----BEGIN CERTIFICATE-----")) {
-            serverCertificate = new String(Base64.getDecoder().decode(serverCertificate.getBytes(UTF_8)), UTF_8);
-            LOGGER.log(
-                    Level.INFO, "Upgraded Kubernetes server certificate key: {0}", serverCertificate.substring(0, 80));
-        }
-
-        // FIPS checks if in FIPS mode
-        ensureServerCertificateInFipsMode(serverCertificate);
-        ensureKubernetesUrlInFipsMode(serverUrl);
-        ensureSkipTlsVerifyInFipsMode(skipTlsVerify);
-
-        if (maxRequestsPerHost == 0) {
-            maxRequestsPerHost = DEFAULT_MAX_REQUESTS_PER_HOST;
-        }
-        if (podRetention == null) {
-            podRetention = PodRetention.getKubernetesCloudDefault();
-        }
-        setConnectTimeout(connectTimeout);
-        setReadTimeout(readTimeout);
-        setRetentionTimeout(retentionTimeout);
-        if (waitForPodSec == null) {
-            waitForPodSec = DEFAULT_WAIT_FOR_POD_SEC;
-        }
-        if (podLabels == null && labels != null) {
-            setPodLabels(PodLabel.fromMap(labels));
-        }
-        if (containerCap != null && containerCap == 0) {
-            containerCap = null;
-        }
-        return this;
+                + templates + '}';
     }
 
     @Override
@@ -1602,16 +1138,11 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
             String hostAddress = System.getProperty("jenkins.host.address");
             if (hostAddress != null
                     && jenkins.clouds.getAll(ArmadaCloud.class).isEmpty()) {
-                ArmadaCloud cloud = new ArmadaCloud("kubernetes");
+                ArmadaCloud cloud = new ArmadaCloud("armada");
                 cloud.setJenkinsUrl(
                         "http://" + hostAddress + ":" + SystemProperties.getInteger("port", 8080) + "/jenkins/");
                 jenkins.clouds.add(cloud);
             }
         }
     }
-
-    public String getCompleteArmadaJobSetId() {
-        return getArmadaJobSetPrefix() + getArmadaJobSetId();
-    }
-
 }
