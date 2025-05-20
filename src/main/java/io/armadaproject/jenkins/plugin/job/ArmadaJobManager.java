@@ -9,7 +9,6 @@ import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuthException;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.HashSet;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;

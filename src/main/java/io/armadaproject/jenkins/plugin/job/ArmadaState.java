@@ -176,9 +176,8 @@ public class ArmadaState implements Saveable, Serializable {
 
     private static XmlFile getConfigFile() {
         var dir = new File(Jenkins.get().getRootDir(), "armada-plugin");
-        if (!dir.exists()) {
-            //noinspection ResultOfMethodCallIgnored
-            dir.mkdirs();
+        if (!dir.exists() && !dir.mkdirs()) {
+            LOGGER.log(Level.WARNING, "Failed to create directory: {0}", dir.getAbsolutePath());
         }
         return new XmlFile(Jenkins.XSTREAM, new File(dir, "job-manager.xml"));
     }

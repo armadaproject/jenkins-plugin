@@ -1,6 +1,7 @@
 package io.armadaproject.jenkins.plugin;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.model.Computer;
 import hudson.model.Executor;
 import hudson.model.Queue;
@@ -104,10 +105,12 @@ public class ArmadaComputer extends AbstractCloudComputer<ArmadaSlave> {
         }
     }
 
+    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "getLabelString() will never return null as it defaults to an empty string.")
     public int getRetryCount() {
         return retries.computeIfAbsent(getNode().getLabelString(), k -> new AtomicInteger(0)).get();
     }
 
+    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE", justification = "getLabelString() will never return null as it defaults to an empty string.")
     public void incrementRetry() {
         retries.computeIfAbsent(getNode().getLabelString(), k -> new AtomicInteger(0)).incrementAndGet();
     }

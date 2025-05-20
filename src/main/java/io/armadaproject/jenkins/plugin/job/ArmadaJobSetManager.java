@@ -5,6 +5,7 @@ import api.Job;
 import api.SubmitOuterClass;
 import io.armadaproject.ArmadaMapper;
 import io.fabric8.kubernetes.api.model.Pod;
+import java.io.IOException;
 import jenkins.metrics.api.Metrics;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuthException;
@@ -13,7 +14,6 @@ import java.io.Serializable;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -21,9 +21,10 @@ import static io.armadaproject.jenkins.plugin.MetricNames.metricNameForPodStatus
 import static io.armadaproject.jenkins.plugin.job.ArmadaClientUtil.*;
 
 public class ArmadaJobSetManager implements Serializable, ArmadaJobSetEventWatcher.ArmadaMessageCallback {
+    private static final long serialVersionUID = 1L;
     private static final Logger LOGGER = Logger.getLogger(ArmadaJobSetManager.class.getName());
 
-    private final ConcurrentMap<String, JobStatus> knownJobs = new ConcurrentHashMap<>();
+    private transient final ConcurrentMap<String, JobStatus> knownJobs = new ConcurrentHashMap<>();
     private final String jobSetId;
     private volatile String queue;
     private volatile String namespace;
@@ -340,5 +341,10 @@ public class ArmadaJobSetManager implements Serializable, ArmadaJobSetEventWatch
                 LOGGER.log(Level.SEVERE, "Error while cancelling job", e);
             }
         }
+    }
+
+    private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
+      this.knownJobs.clear();
     }
 }

@@ -154,6 +154,9 @@ public final class ArmadaClientUtil {
             case PREEMPTING:
                 jobId = eventMessage.getPreempting().getJobId();
                 jobSetId = eventMessage.getPreempting().getJobSetId();
+                break;
+            default:
+                throw new RuntimeException("Unknown event type: " + eventMessage.getEventsCase());
         }
 
         return new ArmadaJobMetadata(jobSetId, jobId, podName, clusterId);

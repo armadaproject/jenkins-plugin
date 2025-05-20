@@ -1,10 +1,12 @@
 package io.armadaproject.jenkins.plugin.job;
 
+import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Objects;
 
-public class DailyArmadaJobSetStrategy implements ArmadaJobSetStrategy {
+public class DailyArmadaJobSetStrategy implements ArmadaJobSetStrategy, Serializable {
+    private static final long serialVersionUID = 1L;
     private final String jobSetPrefix;
 
     public DailyArmadaJobSetStrategy(String jobSetPrefix) {

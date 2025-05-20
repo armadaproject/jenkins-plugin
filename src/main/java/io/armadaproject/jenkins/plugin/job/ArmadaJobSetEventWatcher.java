@@ -3,6 +3,7 @@ package io.armadaproject.jenkins.plugin.job;
 import api.EventOuterClass;
 import io.armadaproject.ArmadaClient;
 import io.grpc.Context;
+import io.grpc.Context.CancellableContext;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
@@ -16,6 +17,7 @@ import java.util.logging.Logger;
 
 public class ArmadaJobSetEventWatcher implements Runnable {
     private static final Logger LOGGER = Logger.getLogger(ArmadaJobSetEventWatcher.class.getName());
+    public static final int CANCELLATION_WAIT_TIME_MS = 60000;
 
     public interface ArmadaMessageCallback {
         void onMessage(EventOuterClass.EventStreamMessage eventStreamMessage);
@@ -56,17 +58,7 @@ public class ArmadaJobSetEventWatcher implements Runnable {
     @Override
     public void run() {
         try(var cancellableContext = Context.current().withCancellation()) {
-            var cancelThread = new Thread(() -> {
-                try {
-                    synchronized (cancellationLock) {
-                        cancellationLock.wait();
-                    }
-                } catch (InterruptedException e) {
-                    // left empty
-                }
-                cancellableContext.cancel(null);
-            });
-            cancelThread.setDaemon(true);
+            var cancelThread = getThread(cancellableContext);
             cancelThread.start();
 
             cancellableContext.run(() -> {
@@ -144,6 +136,22 @@ public class ArmadaJobSetEventWatcher implements Runnable {
                 }
             });
         }
+    }
+
+    private Thread getThread(CancellableContext cancellableContext) {
+        var cancelThread = new Thread(() -> {
+            try {
+                synchronized (cancellationLock) {
+                    cancellationLock.wait(CANCELLATION_WAIT_TIME_MS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LOGGER.log(Level.WARNING, "Cancel thread interrupted", e);
+            }
+            cancellableContext.cancel(null);
+        });
+        cancelThread.setDaemon(true);
+        return cancelThread;
     }
 
     private ArmadaClient getClient() {
