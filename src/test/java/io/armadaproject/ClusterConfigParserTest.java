@@ -3,6 +3,7 @@ package io.armadaproject;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.armadaproject.ClusterConfigParser.ClusterInfo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,18 +39,16 @@ class ClusterConfigParserTest {
     Files.deleteIfExists(tmpFile);
   }
 
-  /*
   @ParameterizedTest
   @MethodSource("provideTestCases")
-  void testParse(String xmlContent, Map<String, String> expectedMap) throws Exception {
+  void testParse(String xmlContent, Map<String, ClusterInfo> expectedMap) throws Exception {
     Files.writeString(tmpFile, xmlContent);
 
-    Map<String, String> clusterMap = ClusterConfigParser.parse(tmpFile.toString());
+    Map<String, ClusterInfo> clusterMap = ClusterConfigParser.parse(tmpFile.toString());
 
     assertEquals(expectedMap.size(), clusterMap.size());
     expectedMap.forEach((key, value) -> assertEquals(value, clusterMap.get(key)));
   }
-   */
 
   private static Stream<Object[]> provideTestCases() {
     return Stream.of(
@@ -61,25 +60,26 @@ class ClusterConfigParserTest {
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                 "<clusters>\n" +
                 "  <cluster>\n" +
-                "    <name>key1</name>\n" +
-                "    <url>value1</url>\n" +
+                "    <name>name1</name>\n" +
+                "    <url>url1</url>\n" +
+                "    <cert_data>cert1</cert_data>\n" +
                 "  </cluster>\n" +
                 "</clusters>",
-            Map.of("key1", "value1")
+            Map.of("name1", new ClusterInfo("name1", "url1", "cert1"))
         },
         new Object[]{
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                 "<clusters>\n" +
                 "  <cluster>\n" +
-                "    <name>key1</name>\n" +
-                "    <url>value1</url>\n" +
+                "    <name>name1</name>\n" +
+                "    <url>url1</url>\n" +
                 "  </cluster>\n" +
                 "  <cluster>\n" +
-                "    <name>key2</name>\n" +
-                "    <url>value2</url>\n" +
+                "    <name>name2</name>\n" +
+                "    <url>url2</url>\n" +
                 "  </cluster>\n" +
                 "</clusters>",
-            Map.of("key1", "value1", "key2", "value2")
+            Map.of("name1", new ClusterInfo("name1", "url1", null), "name2", new ClusterInfo("name2", "url2", null))
         }
     );
   }
