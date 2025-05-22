@@ -286,7 +286,7 @@ public class PodTemplateUtilsTest {
     public void shouldDropNoDataWhenIdentical() {
         PodTemplate podTemplate = new PodTemplate();
         podTemplate.setName("Name");
-//        podTemplate.setNamespace("NameSpace");
+        podTemplate.setNamespace("NameSpace");
         podTemplate.setLabel("Label");
         podTemplate.setServiceAccount("ServiceAccount");
         podTemplate.setNodeSelector("NodeSelector");
@@ -303,7 +303,7 @@ public class PodTemplateUtilsTest {
         PodTemplate selfCombined = combine(podTemplate, podTemplate);
 
         assertEquals("Name", selfCombined.getName());
-//        assertEquals("NameSpace", selfCombined.getNamespace());
+        assertEquals("NameSpace", selfCombined.getNamespace());
         assertEquals("Label", selfCombined.getLabel());
         assertEquals("ServiceAccount", selfCombined.getServiceAccount());
         assertEquals("NodeSelector", selfCombined.getNodeSelector());

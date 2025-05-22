@@ -49,6 +49,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import io.armadaproject.jenkins.plugin.model.KeyValueEnvVar;
+import io.armadaproject.jenkins.plugin.pod.retention.Default;
+import io.armadaproject.jenkins.plugin.pod.retention.Never;
 import io.armadaproject.jenkins.plugin.volumes.EmptyDirVolume;
 import io.armadaproject.jenkins.plugin.volumes.HostPathVolume;
 import org.jenkinsci.plugins.kubernetes.credentials.FileSystemServiceAccountCredential;
@@ -138,7 +140,9 @@ public class KubernetesTest {
     public void upgradeFrom_1_10() throws Exception {
         List<PodTemplate> templates = cloud.getTemplates();
         assertPodTemplates(templates);
+        assertEquals(new Never(), cloud.getPodRetention());
         PodTemplate template = templates.get(0);
+        assertEquals(new Default(), template.getPodRetention());
         assertEquals(cloud.DEFAULT_WAIT_FOR_POD_SEC, cloud.getWaitForPodSec());
         assertTrue(template.isShowRawYaml());
         assertEquals(Collections.emptyList(), template.getYamls());

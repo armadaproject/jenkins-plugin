@@ -89,6 +89,38 @@ public class KubernetesTestUtil {
         ArmadaCloud cloud = new ArmadaCloud("kubernetes");
         // unique labels per test
         cloud.setPodLabels(PodLabel.fromMap(getLabels(cloud, test, name)));
+        KubernetesClient client = cloud.connect();
+
+        // Run in our own testing namespace
+
+        // if there is a namespace specific for this branch (ie. kubernetes-plugin-test-master), use it
+        String branch = System.getenv("BRANCH_NAME");
+        if (StringUtils.isNotBlank(branch)) {
+            String namespaceWithBranch = String.format("%s-%s", DEFAULT_TESTING_NAMESPACE, branch);
+            LOGGER.log(FINE, "Trying to use namespace: {0}", testingNamespace);
+            try {
+                if (client.namespaces().withName(namespaceWithBranch).get() != null) {
+                    testingNamespace = namespaceWithBranch;
+                }
+            } catch (KubernetesClientException e) {
+                // nothing to do
+            }
+        }
+        if (testingNamespace == null) {
+            testingNamespace = DEFAULT_TESTING_NAMESPACE;
+            if (client.namespaces().withName(testingNamespace).get() == null) {
+                LOGGER.log(INFO, "Creating namespace: {0}", testingNamespace);
+                client.namespaces()
+                        .create(new NamespaceBuilder()
+                                .withNewMetadata()
+                                .withName(testingNamespace)
+                                .endMetadata()
+                                .build());
+            }
+        }
+        LOGGER.log(INFO, "Using namespace {0} for branch {1}", new String[] {testingNamespace, branch});
+        cloud.setNamespace(testingNamespace);
+        client = cloud.connect();
 
         return cloud;
     }

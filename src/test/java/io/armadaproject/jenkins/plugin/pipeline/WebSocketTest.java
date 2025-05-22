@@ -27,7 +27,6 @@ import org.jvnet.hudson.test.Issue;
 @Issue("JEP-222")
 public class WebSocketTest extends AbstractKubernetesPipelineTest {
 
-    /*
     @Before
     public void setUp() throws Exception {
         deletePods(cloud.connect(), getLabels(cloud, this, name), false);
@@ -35,7 +34,6 @@ public class WebSocketTest extends AbstractKubernetesPipelineTest {
         cloud.setWebSocket(true);
         logs.record(WebSocketAgents.class, Level.FINE);
     }
-     */
 
     @Test
     public void webSocketAgent() throws Exception {

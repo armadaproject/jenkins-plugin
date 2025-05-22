@@ -39,7 +39,7 @@ public class KubernetesSamplesTest extends AbstractKubernetesPipelineTest {
 
     @Before
     public void setUp() throws Exception {
-//        deletePods(cloud.connect(), getLabels(cloud, this, name), false);
+        deletePods(cloud.connect(), getLabels(cloud, this, name), false);
     }
 
     @Test

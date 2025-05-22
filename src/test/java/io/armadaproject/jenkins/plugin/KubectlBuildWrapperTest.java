@@ -14,7 +14,7 @@ import org.junit.Test;
 public class KubectlBuildWrapperTest extends AbstractKubernetesPipelineTest {
     @Before
     public void setUp() throws Exception {
-//        KubernetesTestUtil.deletePods(cloud.connect(), KubernetesTestUtil.getLabels(cloud, this, name), false);
+        KubernetesTestUtil.deletePods(cloud.connect(), KubernetesTestUtil.getLabels(cloud, this, name), false);
         assertNotNull(createJobThenScheduleRun());
         UsernamePasswordCredentialsImpl creds = new UsernamePasswordCredentialsImpl(
                 CredentialsScope.GLOBAL, "id", "some credentials", "username", "password");

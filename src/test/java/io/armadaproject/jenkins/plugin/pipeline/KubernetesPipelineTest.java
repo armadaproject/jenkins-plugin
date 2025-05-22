@@ -121,7 +121,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
     public FlagRule<Boolean> substituteEnv =
             new FlagRule<>(() -> PodTemplateUtils.SUBSTITUTE_ENV, x -> PodTemplateUtils.SUBSTITUTE_ENV = x);
 
-    /*
     @Before
     public void setUp() throws Exception {
         // Had some problems with FileChannel.close hangs from WorkflowRun.save:
@@ -131,12 +130,10 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         deletePods(cloud.connect(), getLabels(cloud, this, name), false);
         assertNotNull(createJobThenScheduleRun());
     }
-     */
 
     /**
      * Ensure all builds are complete by the end of the test.
      */
-    /*
     @After
     public void allDead() throws Exception {
         if (b != null && b.isLogUpdated()) {
@@ -158,9 +155,7 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
                     }
                 });
     }
-     */
 
-    /*
     @Issue("JENKINS-57993")
     @Test
     public void runInPod() throws Exception {
@@ -254,9 +249,7 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
 
         assertTrue(Metrics.metricRegistry().counter(MetricNames.JOBS_LAUNCHED).getCount() > 0);
     }
-     */
 
-    /*
     @Test
     public void runIn2Pods() throws Exception {
         SemaphoreStep.waitForStart("podTemplate1/1", b);
@@ -293,9 +286,7 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
                 "There are pods leftover after test execution, see previous logs",
                 deletePods(cloud.connect(), getLabels(cloud, this, name), true));
     }
-     */
 
-    /*
     @Issue({"JENKINS-57893", "SECURITY-3079"})
     @Test
     public void runInPodFromYaml() throws Exception {
@@ -333,7 +324,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
             DurableTaskStep.USE_WATCHING = false;
         }
     }
-     */
 
     @Test
     public void runInPodWithDifferentShell() throws Exception {
@@ -499,7 +489,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         r.assertLogContains("Still alive", b);
     }
 
-    /*
     @Test
     public void podTemplateWithMultipleLabels() throws Exception {
         PodTemplate pt = new PodTemplate();
@@ -527,7 +516,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         SemaphoreStep.success("pod/1", null);
         r.assertBuildStatusSuccess(r.waitForCompletion(b));
     }
-     */
 
     @Test
     public void runWithActiveDeadlineSeconds() throws Exception {
@@ -543,7 +531,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         r.assertBuildStatus(Result.ABORTED, r.waitForCompletion(b));
     }
 
-    /*
     @Test
     public void runInPodWithRetention() throws Exception {
         r.assertBuildStatusSuccess(r.waitForCompletion(b));
@@ -552,9 +539,7 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         Map<String, String> labels = getLabels(this, name);
         assertTrue(client.pods().withLabels(labels).delete().size() > 0);
     }
-    */
 
-    /*
     @Issue("JENKINS-49707")
     @Test
     public void terminatedPod() throws Exception {
@@ -567,7 +552,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         r.waitForMessage("Retrying", b);
         r.assertBuildStatusSuccess(r.waitForCompletion(b));
     }
-    */
 
     @Issue("JENKINS-59340")
     @Test
@@ -612,7 +596,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         r.assertLogContains("shut down gracefully", b);
     }
 
-    /*
     @Issue("JENKINS-58306")
     @Test
     public void cascadingDelete() throws Exception {
@@ -636,7 +619,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         cloud.connect().pods().withLabel("app", "cascading-delete").delete();
         r.assertBuildStatusSuccess(r.waitForCompletion(b));
     }
-    */
 
     @Test
     @Ignore
@@ -790,21 +772,16 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         r.assertLogNotContains(CONTAINER_ENV_VAR_FROM_SECRET_VALUE, b);
     }
 
-    /*
     @Test
     public void dynamicPVCWorkspaceVolume() throws Exception {
         dynamicPVC();
     }
-    */
 
-    /*
     @Test
     public void dynamicPVCVolume() throws Exception {
         dynamicPVC();
     }
-    */
 
-    /*
     private void dynamicPVC() throws Exception {
         assumePvcAccess();
         var client = cloud.connect();
@@ -825,7 +802,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
                 .timeout(Duration.ofMinutes(1))
                 .until(() -> getPvcNames(client), equalTo(pvcs));
     }
-    */
 
     private @NonNull Set<String> getPvcNames(KubernetesClient client) {
         return client.persistentVolumeClaims().withLabels(getTestLabels()).list().getItems().stream()
@@ -843,7 +819,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         return KubernetesTestUtil.getLabels(cloud, this, name);
     }
 
-    /*
     private void assumePvcAccess() throws KubernetesAuthException, IOException {
         try {
             cloud.connect().persistentVolumeClaims().list();
@@ -854,7 +829,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
             assumeNoException("was not permitted to list pvcs, so presumably cannot run test either", x);
         }
     }
-     */
 
     @Test
     public void invalidPodGetsCancelled() throws Exception {
@@ -908,7 +882,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         r.assertLogContains("ran on special agent", b);
     }
 
-    /*
     @Test
     public void handleEviction() throws Exception {
         SemaphoreStep.waitForStart("pod/1", b);
@@ -925,7 +898,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         SemaphoreStep.success("pod/2", null);
         r.assertBuildStatusSuccess(r.waitForCompletion(b));
     }
-     */
 
     @Test
     public void decoratorFailure() throws Exception {
