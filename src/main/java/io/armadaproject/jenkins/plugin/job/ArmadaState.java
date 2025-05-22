@@ -107,7 +107,7 @@ public class ArmadaState implements Saveable, Serializable {
     }
 
     public static ArmadaClient createClient(ArmadaClientParameters params) throws KubernetesAuthException {
-        if(params.credentialsId == null) {
+        if(params.credentialsId == null || params.credentialsId.isEmpty()) {
             return new ArmadaClient(params.apiUrl, params.apiPort);
         }
 
