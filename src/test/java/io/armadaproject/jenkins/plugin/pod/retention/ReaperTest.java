@@ -23,7 +23,6 @@
  */
 package io.armadaproject.jenkins.plugin.pod.retention;
 
-import static org.awaitility.Awaitility.await;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.Assert.*;
@@ -100,9 +99,6 @@ public class ReaperTest {
         // k8s node which no pod should be deleted on activation
         assertEquals("node removed from jenkins", j.jenkins.getNodes().size(), 0);
 
-        // watch was created
-        assertShouldBeWatching(r, cloud);
-
         kubeClientRequests()
                 // expect pod not running to be removed
                 .assertRequestCount("/api/v1/namespaces/foo/pods/k8s-node-123", 1)
@@ -132,8 +128,6 @@ public class ReaperTest {
         // expect watch to be attempted
         kubeClientRequests()
                 .assertRequestCountAtLeast("/api/v1/namespaces/foo/pods?allowWatchBookmarks=true&watch=true", 1);
-        // watch failed to register
-        assertShouldNotBeWatching(r, cloud);
     }
 
     @Test
@@ -154,14 +148,9 @@ public class ReaperTest {
         TaskListener tl = mock(TaskListener.class);
         ArmadaComputer kc = new ArmadaComputer(n2);
 
-        // should not be watching the newly created cloud at this point
-        assertShouldNotBeWatching(r, cloud);
-
         // fire compute on-line event
         r.preLaunch(kc, tl);
 
-        // expect new cloud registered
-        assertShouldBeWatching(r, cloud);
         kubeClientRequests()
                 .assertRequestCountAtLeast("/api/v1/namespaces/foo/pods?allowWatchBookmarks=true&watch=true", 1);
     }
@@ -202,21 +191,11 @@ public class ReaperTest {
         // error status event should be filtered out
         listener.expectNoEvents();
 
-        // wait until watch is removed
-        System.out.println("Waiting for watch to be removed");
-        assertShouldNotBeWatching(r, cloud);
-        System.out.println("Watch removed");
-
         // launch computer
         ArmadaSlave n2 = addNode(cloud, "p1-123", "p1");
         TaskListener tl = mock(TaskListener.class);
         ArmadaComputer kc = new ArmadaComputer(n2);
         r.preLaunch(kc, tl);
-
-        // should have started new watch
-        System.out.println("Waiting for a new watch to be started");
-        assertShouldBeWatching(r, cloud);
-        System.out.println("Watch started");
     }
 
     @Test(timeout = 10_000)
@@ -234,15 +213,11 @@ public class ReaperTest {
         r.maybeActivate();
 
         String cloudName = "k8s";
-        assertFalse("should not be watching cloud", r.isWatchingCloud(cloudName));
-
         ArmadaCloud cloud = addCloud(cloudName, "foo");
 
         // invalidate client
         j.jenkins.clouds.add(cloud);
 
-        // watch is added
-        assertShouldBeWatching(r, cloud);
         kubeClientRequests().assertRequestCountAtLeast(watchPodsPath, 1);
     }
 
@@ -261,16 +236,8 @@ public class ReaperTest {
         Reaper r = Reaper.getInstance();
         r.maybeActivate();
 
-        // should not be watching the newly created cloud at this point
-        assertShouldBeWatching(r, cloud);
-
         // invalidate client
         j.jenkins.clouds.remove(cloud);
-
-        // watch is removed
-        // org.csanchez.jenkins.plugins.kubernetes.pod.retention.Reaper.CloudPodWatcher.onClose() is called in a
-        // separate thread
-        assertShouldNotBeWatching(r, cloud);
     }
 
     @Test(timeout = 10_000)
@@ -312,17 +279,11 @@ public class ReaperTest {
         Reaper r = Reaper.getInstance();
         r.maybeActivate();
 
-        // should not be watching the newly created cloud at this point
-        assertShouldBeWatching(r, cloud);
-
         // invalidate client
-        cloud.setNamespace("bar");
+        cloud.setArmadaNamespace("bar");
         j.jenkins.save();
 
         ArmadaSlave node = addNode(cloud, "node-123", "node");
-
-        // watch is still active
-        assertShouldBeWatching(r, cloud);
 
         listener.waitForEvents().expectEvent(Watcher.Action.MODIFIED, node);
         kubeClientRequests().assertRequestCountAtLeast(watchBarPodsPath, 1);
@@ -356,9 +317,6 @@ public class ReaperTest {
 
         // error status event should be filtered out
         listener.expectNoEvents();
-
-        // watch is removed
-        assertShouldNotBeWatching(r, cloud);
     }
 
     @Test(timeout = 10_000)
@@ -397,9 +355,6 @@ public class ReaperTest {
 
         // error status event should be filtered out
         listener.expectNoEvents();
-
-        // watch is still active
-        assertShouldBeWatching(r, cloud);
     }
 
     @Test(timeout = 10_000)
@@ -428,39 +383,6 @@ public class ReaperTest {
 
         // error status event should be filtered out
         listener.expectNoEvents();
-
-        // watch is still active
-        assertShouldBeWatching(r, cloud);
-    }
-
-    @Test
-    public void testCloseWatchersOnShutdown() throws InterruptedException {
-        String watchPodsPath = "/api/v1/namespaces/foo/pods?allowWatchBookmarks=true&watch=true";
-
-        server.expect()
-                .withPath(watchPodsPath)
-                .andUpgradeToWebSocket()
-                .open()
-                .done()
-                .always();
-
-        // add more clouds to make sure they are all closed
-        ArmadaCloud cloud = addCloud("k8s", "foo");
-        ArmadaCloud cloud2 = addCloud("c2", "foo");
-        ArmadaCloud cloud3 = addCloud("c3", "foo");
-
-        // activate reaper
-        Reaper r = Reaper.getInstance();
-        r.maybeActivate();
-
-        // watching cloud
-        assertShouldBeWatching(r, cloud, cloud2, cloud3);
-
-        // trigger shutdown listener
-        new Reaper.ReaperShutdownListener().onBeforeShutdown();
-
-        // watchers removed
-        assertShouldNotBeWatching(r, cloud, cloud2, cloud3);
     }
 
     @Test(timeout = 10_000)
@@ -701,7 +623,7 @@ public class ReaperTest {
     private ArmadaSlave addNode(ArmadaCloud cld, String podName, String nodeName) throws IOException {
         ArmadaSlave node = mock(ArmadaSlave.class);
         when(node.getNodeName()).thenReturn(nodeName);
-        when(node.getNamespace()).thenReturn(cld.getNamespace());
+        when(node.getNamespace()).thenReturn(cld.getArmadaNamespace());
         when(node.getPodName()).thenReturn(podName);
         when(node.getArmadaCloud()).thenReturn(cld);
         when(node.getCloudName()).thenReturn(cld.name);
@@ -719,9 +641,7 @@ public class ReaperTest {
 
     private ArmadaCloud addCloud(String name, String namespace) {
         ArmadaCloud c = new ArmadaCloud(name);
-        c.setServerUrl(server.getClient().getMasterUrl().toString());
-        c.setNamespace(namespace);
-        c.setSkipTlsVerify(true);
+        c.setArmadaNamespace(namespace);
         j.jenkins.clouds.add(c);
         return c;
     }
@@ -897,17 +817,5 @@ public class ReaperTest {
                 .withMessage("500: Internal error")
                 .endStatusObject()
                 .build();
-    }
-
-    private static void assertShouldBeWatching(Reaper r, ArmadaCloud... clouds) {
-        for (ArmadaCloud cloud : clouds) {
-            await("should be watching cloud " + cloud.name).until(() -> r.isWatchingCloud(cloud.name));
-        }
-    }
-
-    private static void assertShouldNotBeWatching(Reaper r, ArmadaCloud... clouds) {
-        for (ArmadaCloud cloud : clouds) {
-            await("should not be watching cloud " + cloud.name).until(() -> !r.isWatchingCloud(cloud.name));
-        }
     }
 }

@@ -1,7 +1,5 @@
 package io.armadaproject.jenkins.plugin.pipeline;
 
-import io.armadaproject.jenkins.plugin.pod.retention.OnFailure;
-import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
 import io.armadaproject.jenkins.plugin.volumes.workspace.DynamicPVCWorkspaceVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.EmptyDirWorkspaceVolume;
 import org.jenkinsci.plugins.workflow.cps.SnippetizerTester;
@@ -39,12 +37,8 @@ public class ArmadaPodTemplateStepTest {
         st.assertRoundTrip(step, "podTemplate(label: 'podLabel') {\n    // some block\n}");
         step.setLabel("");
         st.assertRoundTrip(step, "podTemplate {\n    // some block\n}");
-        step.setPodRetention(
-                PodRetention.getPodTemplateDefault()); // this is the default, it should not appear in the snippet.
         st.assertRoundTrip(step, "podTemplate {\n    // some block\n}");
-        step.setPodRetention(new OnFailure());
         st.assertRoundTrip(step, "podTemplate(podRetention: onFailure()) {\n    // some block\n}");
-        step.setPodRetention(null);
         st.assertRoundTrip(step, "podTemplate {\n    // some block\n}");
         step.setWorkspaceVolume(new DynamicPVCWorkspaceVolume());
         st.assertRoundTrip(step, "podTemplate(workspaceVolume: dynamicPVC()) {\n    // some block\n}");

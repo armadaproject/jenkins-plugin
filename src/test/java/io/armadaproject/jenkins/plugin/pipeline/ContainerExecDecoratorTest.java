@@ -122,7 +122,7 @@ public class ContainerExecDecoratorTest {
     @Before
     public void configureCloud() throws Exception {
         cloud = setupCloud(this, name);
-        client = cloud.connect();
+//        client = cloud.connect();
         deletePods(client, getLabels(this, name), false);
 
         String image = "busybox";
@@ -376,8 +376,8 @@ public class ContainerExecDecoratorTest {
         }
 
         // force expiration of client
-        KubernetesClientProvider.invalidate(cloud.getDisplayName());
-        cloud.connect();
+//        KubernetesClientProvider.invalidate(cloud.getDisplayName());
+//        cloud.connect();
         threads.stream().forEach(t -> t.start());
         threads.stream().forEach(t -> {
             try {

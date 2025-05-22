@@ -68,10 +68,12 @@ public class KubernetesQueueTaskDispatcherTest {
         json2.element("usage-permission-B", true);
         folderB.addProperty(property2.reconfigure(null, json2));
 
-        slaveA = new ArmadaSlave(
-                "A", new PodTemplate(), "testA", "A", "dockerA", new ArmadaLauncher(), RetentionStrategy.INSTANCE);
-        slaveB = new ArmadaSlave(
-                "B", new PodTemplate(), "testB", "B", "dockerB", new ArmadaLauncher(), RetentionStrategy.INSTANCE);
+        slaveA = new ArmadaSlave("A", new PodTemplate(), "testA", "A", "dockerA",
+            new ArmadaLauncher(), RetentionStrategy.INSTANCE, "jobSetIdA", "jobIdA", "serverUrlA",
+            "clusterIdA", "podNameA");
+        slaveB = new ArmadaSlave("B", new PodTemplate(), "testB", "B", "dockerB",
+            new ArmadaLauncher(), RetentionStrategy.INSTANCE, "jobSetIdB", "jobIdB", "serverUrlB",
+            "clusterIdB", "podNameB");
     }
 
     @Test
@@ -103,8 +105,9 @@ public class KubernetesQueueTaskDispatcherTest {
         cloud.setUsageRestricted(false);
         jenkins.jenkins.clouds.add(cloud);
         ArmadaQueueTaskDispatcher dispatcher = new ArmadaQueueTaskDispatcher();
-        ArmadaSlave slave = new ArmadaSlave(
-                "C", new PodTemplate(), "testC", "C", "dockerC", new ArmadaLauncher(), RetentionStrategy.INSTANCE);
+        ArmadaSlave slave = new ArmadaSlave("C", new PodTemplate(), "testC", "C", "dockerC",
+            new ArmadaLauncher(), RetentionStrategy.INSTANCE, "jobSetIdC", "jobIdC", "serverUrlC",
+            "clusterIdC", "podNameC");
 
         assertNull(canTake(dispatcher, slave, project));
     }

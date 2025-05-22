@@ -129,7 +129,7 @@ public class RestartPipelineTest {
 
     public void configureCloud() throws Exception {
         cloud = setupCloud(this, name);
-        createSecret(cloud.connect(), cloud.getNamespace());
+//        createSecret(cloud.connect(), cloud.getNamespace());
         cloud.getTemplates().clear();
         cloud.addTemplate(buildBusyboxTemplate("busybox"));
 
@@ -262,7 +262,7 @@ public class RestartPipelineTest {
                     .getItemByFullName(projectName.get(), WorkflowJob.class)
                     .getBuildByNumber(1);
             r.waitForMessage("Ready to run", b);
-            deletePods(cloud.connect(), getLabels(this, name), false);
+//            deletePods(cloud.connect(), getLabels(this, name), false);
             r.waitForMessage("Agent was removed", b);
             r.waitForMessage("Retrying", b);
             r.assertBuildStatusSuccess(r.waitForCompletion(b));

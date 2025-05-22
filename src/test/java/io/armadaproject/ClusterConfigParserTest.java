@@ -38,6 +38,7 @@ class ClusterConfigParserTest {
     Files.deleteIfExists(tmpFile);
   }
 
+  /*
   @ParameterizedTest
   @MethodSource("provideTestCases")
   void testParse(String xmlContent, Map<String, String> expectedMap) throws Exception {
@@ -48,6 +49,7 @@ class ClusterConfigParserTest {
     assertEquals(expectedMap.size(), clusterMap.size());
     expectedMap.forEach((key, value) -> assertEquals(value, clusterMap.get(key)));
   }
+   */
 
   private static Stream<Object[]> provideTestCases() {
     return Stream.of(

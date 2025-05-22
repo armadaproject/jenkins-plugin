@@ -19,8 +19,6 @@ import org.apache.commons.beanutils.PropertyUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.lang3.builder.EqualsBuilder;
-import io.armadaproject.jenkins.plugin.pod.retention.Always;
-import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
 import io.armadaproject.jenkins.plugin.volumes.EmptyDirVolume;
 import io.armadaproject.jenkins.plugin.volumes.PodVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.WorkspaceVolume;
@@ -148,12 +146,6 @@ public class ArmadaCloudTest {
     }
 
     @Test
-    public void testKubernetesCloudDefaults() {
-        ArmadaCloud cloud = new ArmadaCloud("name");
-        assertEquals(PodRetention.getKubernetesCloudDefault(), cloud.getPodRetention());
-    }
-
-    @Test
     public void testPodLabels() {
         List<PodLabel> defaultPodLabelsList = PodLabel.fromMap(ArmadaCloud.DEFAULT_POD_LABELS);
         ArmadaCloud cloud = new ArmadaCloud("name");
@@ -210,7 +202,7 @@ public class ArmadaCloudTest {
 
         ArmadaCloud cloud = new ArmadaCloud("name");
         var objectProperties =
-                Set.of("templates", "podRetention", "podLabels", "labels", "serverCertificate", "garbageCollection");
+                Set.of("templates", "podLabels", "labels", "serverCertificate", "garbageCollection");
         for (String property : PropertyUtils.describe(cloud).keySet()) {
             if (PropertyUtils.isWriteable(cloud, property)) {
                 Class<?> propertyType = PropertyUtils.getPropertyType(cloud, property);
@@ -235,7 +227,6 @@ public class ArmadaCloudTest {
         }
        // cloud.setServerCertificate("-----BEGIN CERTIFICATE-----");
         cloud.setTemplates(Collections.singletonList(pt));
-        cloud.setPodRetention(new Always());
         cloud.setPodLabels(PodLabel.listOf("foo", "bar", "cat", "dog"));
         cloud.setLabels(Collections.singletonMap("foo", "bar"));
 
@@ -289,7 +280,6 @@ public class ArmadaCloudTest {
         assertEquals(ArmadaCloud.DEFAULT_RETENTION_TIMEOUT_MINUTES, cloud.getRetentionTimeout());
         assertEquals(Integer.MAX_VALUE, cloud.getContainerCap());
         assertEquals(ArmadaCloud.DEFAULT_MAX_REQUESTS_PER_HOST, cloud.getMaxRequestsPerHost());
-        assertEquals(PodRetention.getKubernetesCloudDefault(), cloud.getPodRetention());
         assertEquals(ArmadaCloud.DEFAULT_WAIT_FOR_POD_SEC, cloud.getWaitForPodSec());
     }
 

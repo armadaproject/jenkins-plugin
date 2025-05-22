@@ -35,6 +35,8 @@ import hudson.slaves.NodeProperty;
 import hudson.slaves.NodePropertyDescriptor;
 import hudson.slaves.NodeProvisioner;
 import hudson.util.DescribableList;
+import io.armadaproject.ArmadaClient;
+import io.armadaproject.jenkins.plugin.job.ArmadaState;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.jenkins.plugins.kubernetes.NoDelayProvisionerStrategy;
@@ -155,7 +157,7 @@ public abstract class AbstractKubernetesPipelineTest {
     @Before
     public void configureCloud() throws Exception {
         cloud = setupCloud(this, name);
-        createSecret(cloud.connect(), cloud.getNamespace());
+//        createSecret(ArmadaState.createClient(), cloud.getNamespace());
         cloud.getTemplates().clear();
         cloud.addTemplate(buildBusyboxTemplate("busybox"));
 

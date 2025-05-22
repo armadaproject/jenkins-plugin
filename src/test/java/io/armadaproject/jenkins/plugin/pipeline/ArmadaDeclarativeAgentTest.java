@@ -35,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.plugins.git.GitStep;
-import io.armadaproject.jenkins.plugin.pod.retention.OnFailure;
 import org.jenkinsci.plugins.structs.describable.UninstantiatedDescribable;
 import org.jenkinsci.plugins.workflow.actions.ArgumentsAction;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
@@ -93,10 +92,6 @@ public class ArmadaDeclarativeAgentTest extends AbstractKubernetesPipelineTest {
                                 new NodeStepTypePredicate("container"),
                                 FlowScanningUtils.hasActionPredicate(ArgumentsAction.class)));
         assertNotNull("recorded arguments for container", containerNode);
-        // JENKINS-60886
-        UninstantiatedDescribable podRetention = (UninstantiatedDescribable) arguments.get("podRetention");
-        assertNotNull(podRetention);
-        assertEquals(podRetention.getModel().getType(), OnFailure.class);
     }
 
     @Issue("JENKINS-48135")
@@ -113,7 +108,7 @@ public class ArmadaDeclarativeAgentTest extends AbstractKubernetesPipelineTest {
     @Issue("JENKINS-51610")
     @Test
     public void declarativeWithNamespaceFromYaml() throws Exception {
-        createNamespaceIfNotExist(cloud.connect(), "kubernetes-plugin-test-overridden-namespace");
+//        createNamespaceIfNotExist(cloud.connect(), "kubernetes-plugin-test-overridden-namespace");
         assertNotNull(createJobThenScheduleRun());
         r.assertBuildStatusSuccess(r.waitForCompletion(b));
         r.assertLogContains("Apache Maven 3.3.9", b);
@@ -226,7 +221,7 @@ public class ArmadaDeclarativeAgentTest extends AbstractKubernetesPipelineTest {
     public void declarativeRetries() throws Exception {
         assertNotNull(createJobThenScheduleRun());
         r.waitForMessage("+ sleep", b);
-        deletePods(cloud.connect(), getLabels(this, name), false);
+//        deletePods(cloud.connect(), getLabels(this, name), false);
         r.waitForMessage("busybox --", b);
         r.waitForMessage("jnlp --", b);
         r.waitForMessage("was deleted; cancelling node body", b);

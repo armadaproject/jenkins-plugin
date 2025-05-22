@@ -52,27 +52,18 @@ public class KubernetesClientProvider {
 
     private KubernetesClientProvider() {}
 
-    static KubernetesClient createClient(ArmadaCloud cloud, String serverUrl, String caCertData)
-        throws KubernetesAuthException {
+    static KubernetesClient createClient(ArmadaCloud cloud, String serverUrl, String caCertData) {
         CacheKey cacheKey = new CacheKey(cloud.getDisplayName(), serverUrl, caCertData);
-        final Client c = clients.getIfPresent(cacheKey);
-        if (c == null) {
-            KubernetesClient client = new KubernetesFactoryAdapter(
-                serverUrl,
-                cloud.getArmadaNamespace(),
-                    caCertData,
-                cloud.getCredentialsId(),
-                cloud.isSkipTlsVerify(),
-                cloud.getConnectTimeout(),
-                cloud.getReadTimeout(),
-                cloud.getMaxRequestsPerHost(),
-                cloud.isUseJenkinsProxy())
-                .createClient();
-            clients.put(cacheKey, new Client(getValidity(cloud, serverUrl, caCertData), client));
-            LOGGER.log(Level.FINE, "Created new Kubernetes client: {0} {1}", new Object[] {cacheKey, client});
-            return client;
+        Client cachedClient = clients.getIfPresent(cacheKey);
+
+        if (cachedClient != null) {
+            return cachedClient.getClient();
         }
-        return c.getClient();
+
+        KubernetesClient newClient = createClient(cloud, cloud.getArmadaNamespace(), caCertData);
+        clients.put(cacheKey, new Client(getValidity(cloud, serverUrl, caCertData), newClient));
+        LOGGER.log(Level.FINE, "Created new Kubernetes client: {0} {1}", new Object[] {cacheKey, newClient});
+        return newClient;
     }
 
     /**
@@ -88,7 +79,6 @@ public class KubernetesClientProvider {
             cloud.getArmadaNamespace(),
                 caCertData,
             cloud.getCredentialsId(),
-            cloud.isSkipTlsVerify(),
             cloud.getConnectTimeout(),
             cloud.getReadTimeout(),
             cloud.getMaxRequestsPerHostStr(),

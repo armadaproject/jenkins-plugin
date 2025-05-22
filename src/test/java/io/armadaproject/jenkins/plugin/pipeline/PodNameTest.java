@@ -26,10 +26,12 @@ import org.junit.Test;
 
 public class PodNameTest extends AbstractKubernetesPipelineTest {
 
+    /*
     @Before
     public void setUp() throws Exception {
         deletePods(cloud.connect(), getLabels(cloud, this, name), false);
     }
+     */
 
     @Test
     public void multipleDots() throws Exception {

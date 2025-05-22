@@ -6,7 +6,6 @@ import static org.hamcrest.Matchers.isA;
 
 import java.util.Collections;
 import java.util.Map;
-import io.armadaproject.jenkins.plugin.pod.retention.Never;
 import io.armadaproject.jenkins.plugin.pod.yaml.Merge;
 import io.armadaproject.jenkins.plugin.volumes.workspace.DynamicPVCWorkspaceVolume;
 import org.jenkinsci.plugins.pipeline.modeldefinition.generator.AgentDirective;
@@ -81,14 +80,12 @@ public class ArmadaDeclarativeAgentUnitTest {
         workspaceVolume.setRequestsSize("1G");
         workspaceVolume.setAccessModes("ReadWrite");
         instance.setWorkspaceVolume(workspaceVolume);
-        instance.setPodRetention(new Never());
         instance.setInheritFrom("inheritFrom");
         dg.assertGenerateDirective(
                 directive,
                 "agent {\n" + "  kubernetes {\n"
                         + "    cloud 'cloud'\n"
                         + "    inheritFrom 'inheritFrom'\n"
-                        + "    podRetention never()\n"
                         + "    workspaceVolume dynamicPVC(accessModes: 'ReadWrite', requestsSize: '1G', storageClassName: 'sc')\n"
                         + "    yaml 'yaml'\n"
                         + "    yamlMergeStrategy merge()\n"

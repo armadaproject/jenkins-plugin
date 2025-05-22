@@ -32,7 +32,7 @@ public final class DirectConnectionTest extends AbstractKubernetesPipelineTest {
 
     @Before
     public void setUp() throws Exception {
-        KubernetesTestUtil.deletePods(cloud.connect(), KubernetesTestUtil.getLabels(cloud, this, name), false);
+//        KubernetesTestUtil.deletePods(cloud.connect(), KubernetesTestUtil.getLabels(cloud, this, name), false);
         cloud.setDirectConnection(true);
         logs.record(PodTemplateBuilder.class, Level.FINEST);
     }

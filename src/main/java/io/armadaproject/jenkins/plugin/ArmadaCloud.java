@@ -1,7 +1,6 @@
 package io.armadaproject.jenkins.plugin;
 
 import static org.apache.commons.lang.StringUtils.isEmpty;
-import static io.armadaproject.jenkins.plugin.KubernetesFactoryAdapter.resolveCredentials;
 
 import api.Health.HealthCheckResponse.ServingStatus;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
@@ -29,7 +28,6 @@ import hudson.util.FormApply;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import hudson.util.XStream2;
-import io.armadaproject.ArmadaClient;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -57,12 +55,10 @@ import jenkins.model.JenkinsLocationConfiguration;
 import jenkins.security.FIPS140;
 import jenkins.util.SystemProperties;
 import jenkins.websocket.WebSockets;
-import net.bytebuddy.implementation.bytecode.Throw;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import io.armadaproject.jenkins.plugin.pipeline.PodTemplateMap;
 import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuth;
-import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
@@ -120,7 +116,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
 
     private boolean useJenkinsProxy;
 
-    private boolean skipTlsVerify;
     private boolean addMasterProxyEnvVars;
 
     private boolean capOnlyOnAlivePods;
@@ -341,16 +336,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     @DataBoundSetter
     public void setArmadaClusterConfigPath(String armadaClusterConfigPath) {
         this.armadaClusterConfigPath = armadaClusterConfigPath;
-    }
-
-    public boolean isSkipTlsVerify() {
-        return skipTlsVerify;
-    }
-
-    @DataBoundSetter
-    public void setSkipTlsVerify(boolean skipTlsVerify) {
-        ensureSkipTlsVerifyInFipsMode(skipTlsVerify);
-        this.skipTlsVerify = skipTlsVerify;
     }
 
     public boolean isAddMasterProxyEnvVars() {
@@ -655,17 +640,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         }
     }
 
-    /**
-     * Checks if TLS verification is being skipped, which is not allowed in FIPS mode
-     * Continues if not being skipped or not in FIPS mode, throws an {@link IllegalArgumentException} if not.
-     * @param skipTlsVerify value to check
-     */
-    private static void ensureSkipTlsVerifyInFipsMode(boolean skipTlsVerify) {
-        if (FIPS140.useCompliantAlgorithms() && skipTlsVerify) {
-            throw new IllegalArgumentException(Messages.KubernetesCloud_skipTlsVerifyNotAllowedInFIPSMode());
-        }
-    }
-
     @Override
     public void replaceTemplate(PodTemplate oldTemplate, PodTemplate newTemplate) {
         this.removeTemplate(oldTemplate);
@@ -777,7 +751,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         if (o == null || getClass() != o.getClass()) return false;
         ArmadaCloud that = (ArmadaCloud) o;
         return Objects.equals(name, that.name)
-                && skipTlsVerify == that.skipTlsVerify
                 && addMasterProxyEnvVars == that.addMasterProxyEnvVars
                 && capOnlyOnAlivePods == that.capOnlyOnAlivePods
                 && Objects.equals(containerCap, that.containerCap)
@@ -803,7 +776,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 name,
                 defaultsProviderTemplate,
                 templates,
-                skipTlsVerify,
                 addMasterProxyEnvVars,
                 capOnlyOnAlivePods,
                 jnlpregistry,
@@ -901,19 +873,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                         "Error testing Armada connection url:%s, port:%s, cause:%s", armadaUrl,
                         armadaPort, cause == null ? t.toString() : cause.toString());
             }
-        }
-
-        @RequirePOST
-        @SuppressWarnings({"unused", "lgtm[jenkins/csrf]"
-        }) // used by jelly and already fixed jenkins security scan warning
-        public FormValidation doCheckSkipTlsVerify(@QueryParameter boolean skipTlsVerify) {
-            Jenkins.get().checkPermission(Jenkins.MANAGE);
-            try {
-                ensureSkipTlsVerifyInFipsMode(skipTlsVerify);
-            } catch (IllegalArgumentException ex) {
-                return FormValidation.error(ex, ex.getLocalizedMessage());
-            }
-            return FormValidation.ok();
         }
 
         @RequirePOST
@@ -1093,7 +1052,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     public String toString() {
         return "ArmadaCloud{name=" + name + ", defaultsProviderTemplate='"
                 + defaultsProviderTemplate + '\'' + ", serverUrl='"
-                + skipTlsVerify + ", addMasterProxyEnvVars="
                 + addMasterProxyEnvVars + ", capOnlyOnAlivePods="
                 + capOnlyOnAlivePods +  ", jnlpregistry='"
                 + jnlpregistry + '\'' + ", jenkinsUrl='"

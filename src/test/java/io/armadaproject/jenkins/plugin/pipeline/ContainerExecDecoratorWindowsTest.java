@@ -105,7 +105,7 @@ public class ContainerExecDecoratorWindowsTest {
     @Before
     public void configureCloud() throws Exception {
         cloud = setupCloud(this, name);
-        client = cloud.connect();
+//        client = cloud.connect();
         deletePods(client, getLabels(this, name), false);
 
         String image = "mcr.microsoft.com/windows:" + WINDOWS_1809_BUILD + ".2686";

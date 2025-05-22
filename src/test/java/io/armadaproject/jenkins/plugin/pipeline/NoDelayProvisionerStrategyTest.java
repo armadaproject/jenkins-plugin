@@ -35,7 +35,7 @@ public class NoDelayProvisionerStrategyTest extends AbstractKubernetesPipelineTe
     public void setUp() throws Exception {
         CloudProvisionerListenerImpl instance = ExtensionList.lookupSingleton(CloudProvisionerListenerImpl.class);
         instance.setDelegate(cloudProvisioningListener);
-        deletePods(cloud.connect(), getLabels(cloud, this, name), false);
+//        deletePods(cloud.connect(), getLabels(cloud, this, name), false);
         assertNotNull(createJobThenScheduleRun());
     }
 
