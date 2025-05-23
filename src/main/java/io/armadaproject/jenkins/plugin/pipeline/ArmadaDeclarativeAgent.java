@@ -5,7 +5,6 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.ExtensionList;
 import hudson.Util;
-import hudson.model.Label;
 import hudson.util.ListBoxModel;
 import io.armadaproject.jenkins.plugin.ContainerTemplate;
 import io.armadaproject.jenkins.plugin.PodTemplate;
@@ -13,20 +12,16 @@ import io.armadaproject.jenkins.plugin.pod.yaml.YamlMergeStrategy;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import io.armadaproject.jenkins.plugin.volumes.workspace.WorkspaceVolume;
 import org.jenkinsci.Symbol;
 import org.jenkinsci.plugins.pipeline.modeldefinition.agent.DeclarativeAgentDescriptor;
 import org.jenkinsci.plugins.pipeline.modeldefinition.agent.RetryableDeclarativeAgent;
 import org.jenkinsci.plugins.variant.OptionalExtension;
-import org.kohsuke.accmod.Restricted;
-import org.kohsuke.accmod.restrictions.DoNotUse;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
@@ -106,20 +101,8 @@ public class ArmadaDeclarativeAgent extends RetryableDeclarativeAgent<ArmadaDecl
     @DataBoundConstructor
     public ArmadaDeclarativeAgent() {}
 
-    @Deprecated
-    public ArmadaDeclarativeAgent(String label, ContainerTemplate containerTemplate) {
-        this.label = label;
-        this.containerTemplate = containerTemplate;
-    }
-
     public String getLabel() {
         return label;
-    }
-
-    public String getLabelExpression() {
-        return label != null
-                ? Label.parse(label).stream().map(Objects::toString).sorted().collect(Collectors.joining(" && "))
-                : null;
     }
 
     @DataBoundSetter
@@ -233,17 +216,6 @@ public class ArmadaDeclarativeAgent extends RetryableDeclarativeAgent<ArmadaDecl
     @DataBoundSetter
     public void setYaml(String yaml) {
         this.yaml = yaml;
-    }
-
-    @Deprecated
-    public ContainerTemplate getContainerTemplate() {
-        return containerTemplate;
-    }
-
-    @DataBoundSetter
-    @Restricted(DoNotUse.class)
-    public void setContainerTemplate(ContainerTemplate containerTemplate) {
-        this.containerTemplate = containerTemplate;
     }
 
     @NonNull

@@ -641,31 +641,6 @@ public class PodTemplateUtils {
         return SUBSTITUTE_ENV ? replaceMacro(s, System.getenv()) : s;
     }
 
-    /**
-     * Substitutes a placeholder with a value found in the specified map.
-     * @deprecated use {@link Util#replaceMacro(String, Map)}
-     * @param s             The placeholder. Should be use the format: ${placeholder}.
-     * @param properties    The map with the key value pairs to use for substitution.
-     * @return              The substituted value if found, or the input value otherwise.
-     */
-    @Deprecated
-    public static String substitute(String s, Map<String, String> properties) {
-        return replaceMacro(s, properties);
-    }
-
-    /**
-     * Substitutes a placeholder with a value found in the specified map.
-     * @deprecated check if it is null or empty in the caller method, then use {@link #substitute(String,Map)}
-     * @param s             The placeholder. Should be use the format: ${placeholder}.
-     * @param properties    The map with the key value pairs to use for substitution.
-     * @param defaultValue  The default value to return if no match is found.
-     * @return              The substituted value if found, or the default value otherwise.
-     */
-    @Deprecated
-    public static String substitute(String s, Map<String, String> properties, String defaultValue) {
-        return isNullOrEmpty(s) ? defaultValue : replaceMacro(s, properties);
-    }
-
     public static Pod parseFromYaml(String yaml) {
         String s = yaml;
         // JENKINS-57116

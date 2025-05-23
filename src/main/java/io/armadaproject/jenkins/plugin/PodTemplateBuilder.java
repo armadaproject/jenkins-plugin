@@ -167,12 +167,6 @@ public class PodTemplateBuilder {
         return this;
     }
 
-    @Deprecated
-    public Pod build(ArmadaSlave slave) {
-        LOGGER.log(Level.WARNING, "This method is deprecated and does nothing");
-        return this.build();
-    }
-
     /**
      * Create a Pod object from a PodTemplate
      */

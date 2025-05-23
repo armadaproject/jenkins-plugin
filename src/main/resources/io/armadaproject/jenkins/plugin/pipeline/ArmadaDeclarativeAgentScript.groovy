@@ -42,23 +42,12 @@ public class ArmadaDeclarativeAgentScript extends DeclarativeAgentScript<ArmadaD
                 // Do not implicitly inherit from parent template context for declarative Kubernetes agent declaration
                 describable.setInheritFrom("")
             }
-            if (describable.labelExpression != null) {
-                script.echo '[WARNING] label option is deprecated. To use a static pod template, use the \'inheritFrom\' option.'
-            }
-            if (describable.containerTemplate != null) {
-                script.echo '[WARNING] containerTemplate option is deprecated, use yaml syntax to define containers.'
-            }
             script.steps.'io.armadaproject.jenkins.plugin.pipeline.ArmadaPodTemplateStep'(describable.asArgs) {
                 Closure run = {
-                    script.node(describable.labelExpression ?: script.POD_LABEL) {
+                    script.node(script.POD_LABEL) {
                         CheckoutScript.doCheckout(script, describable, describable.customWorkspace) {
                             // what container to use for the main body
                             def container = describable.defaultContainer ?: 'jnlp'
-
-                            if (describable.containerTemplate != null) {
-                                // run inside the container declared for backwards compatibility
-                                container = describable.containerTemplate.asArgs
-                            }
 
                             // call the main body
                             if (container == 'jnlp') {

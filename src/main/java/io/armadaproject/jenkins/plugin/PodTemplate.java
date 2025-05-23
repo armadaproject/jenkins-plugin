@@ -19,7 +19,6 @@ import hudson.slaves.NodeProperty;
 import hudson.util.FormApply;
 import hudson.util.XStream2;
 import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.client.KubernetesClient;
 import java.io.IOException;
 import java.io.Serializable;
 import java.io.StringReader;
@@ -119,8 +118,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
     private Long runAsGroup;
 
     private String supplementalGroups;
-
-    private boolean capOnlyOnAlivePods;
 
     private boolean alwaysPullImage;
 
@@ -265,23 +262,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
         recomputeLabelDerivedFields();
     }
 
-    @Deprecated
-    public PodTemplate(String image, List<? extends PodVolume> volumes) {
-        this(null, image, volumes);
-    }
-
-    @SuppressFBWarnings(
-            value = "MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR",
-            justification = "Warning raised for calling the getContainers method. As "
-                    + "this current method is deprecated anyway, it is " + "probably safer to not change it.")
-    @Deprecated
-    PodTemplate(String name, String image, List<? extends PodVolume> volumes) {
-        this(name, volumes, Collections.emptyList());
-        if (image != null) {
-            getContainers().add(new ContainerTemplate(name, image));
-        }
-    }
-
     @Restricted(NoExternalUse.class) // testing only
     PodTemplate(String name, List<? extends PodVolume> volumes, List<? extends ContainerTemplate> containers) {
         this();
@@ -311,52 +291,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
 
     public String getName() {
         return name;
-    }
-
-    @Deprecated
-    public String getImage() {
-        return getFirstContainer().map(ContainerTemplate::getImage).orElse(null);
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setCommand(String command) {
-        getFirstContainer().ifPresent((i) -> i.setCommand(command));
-    }
-
-    @Deprecated
-    public String getCommand() {
-        return getFirstContainer().map(ContainerTemplate::getCommand).orElse(null);
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setArgs(String args) {
-        getFirstContainer().ifPresent((i) -> i.setArgs(args));
-    }
-
-    @Deprecated
-    public String getArgs() {
-        return getFirstContainer().map(ContainerTemplate::getArgs).orElse(null);
-    }
-
-    @Deprecated // why would you use this method? It returns the constant "Kubernetes Pod Template".
-    public String getDisplayName() {
-        return "Kubernetes Pod Template";
-    }
-
-    @DataBoundSetter
-    @Deprecated
-    public void setRemoteFs(String remoteFs) {
-        getFirstContainer().ifPresent((i) -> i.setWorkingDir(remoteFs));
-    }
-
-    @Deprecated
-    @SuppressFBWarnings(
-            value = "NM_CONFUSING",
-            justification = "Naming confusion with a getRemoteFS method, but the current one is deprecated.")
-    public String getRemoteFs() {
-        return getFirstContainer().map(ContainerTemplate::getWorkingDir).orElse(ContainerTemplate.DEFAULT_WORKING_DIR);
     }
 
     @DataBoundSetter
@@ -528,17 +462,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
         return nodeUsageMode == null ? Node.Mode.EXCLUSIVE : nodeUsageMode;
     }
 
-    @Deprecated
-    @DataBoundSetter
-    public void setPrivileged(boolean privileged) {
-        getFirstContainer().ifPresent((i) -> i.setPrivileged(privileged));
-    }
-
-    @Deprecated
-    public boolean isPrivileged() {
-        return getFirstContainer().map(ContainerTemplate::isPrivileged).orElse(false);
-    }
-
     @DataBoundSetter
     public void setRunAsUser(String runAsUser) {
         this.runAsUser = PodTemplateUtils.parseLong(runAsUser);
@@ -603,28 +526,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
     @DataBoundSetter
     public void setSchedulerName(String schedulerName) {
         this.schedulerName = Util.fixEmpty(schedulerName);
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setAlwaysPullImage(boolean alwaysPullImage) {
-        getFirstContainer().ifPresent((i) -> i.setAlwaysPullImage(alwaysPullImage));
-    }
-
-    @Deprecated
-    public boolean isAlwaysPullImage() {
-        return getFirstContainer().map(ContainerTemplate::isAlwaysPullImage).orElse(false);
-    }
-
-    @DataBoundSetter
-    @Deprecated
-    public void setCapOnlyOnAlivePods(boolean capOnlyOnAlivePods) {
-        this.capOnlyOnAlivePods = capOnlyOnAlivePods;
-    }
-
-    @Deprecated
-    public boolean isCapOnlyOnAlivePods() {
-        return capOnlyOnAlivePods;
     }
 
     @CheckForNull
@@ -751,54 +652,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
     public PodTemplateToolLocation getNodeProperties() {
         if (this.nodeProperties == null) this.nodeProperties = new PodTemplateToolLocation(this);
         return nodeProperties;
-    }
-
-    @Deprecated
-    public String getResourceRequestMemory() {
-        return getFirstContainer()
-                .map(ContainerTemplate::getResourceRequestMemory)
-                .orElse(null);
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setResourceRequestMemory(String resourceRequestMemory) {
-        getFirstContainer().ifPresent((i) -> i.setResourceRequestMemory(resourceRequestMemory));
-    }
-
-    @Deprecated
-    public String getResourceLimitCpu() {
-        return getFirstContainer().map(ContainerTemplate::getResourceLimitCpu).orElse(null);
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setResourceLimitCpu(String resourceLimitCpu) {
-        getFirstContainer().ifPresent((i) -> i.setResourceLimitCpu(resourceLimitCpu));
-    }
-
-    @Deprecated
-    public String getResourceLimitMemory() {
-        return getFirstContainer()
-                .map(ContainerTemplate::getResourceLimitMemory)
-                .orElse(null);
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setResourceLimitMemory(String resourceLimitMemory) {
-        getFirstContainer().ifPresent((i) -> i.setResourceLimitMemory(resourceLimitMemory));
-    }
-
-    @Deprecated
-    public String getResourceRequestCpu() {
-        return getFirstContainer().map(ContainerTemplate::getResourceRequestCpu).orElse(null);
-    }
-
-    @Deprecated
-    @DataBoundSetter
-    public void setResourceRequestCpu(String resourceRequestCpu) {
-        getFirstContainer().ifPresent((i) -> i.setResourceRequestCpu(resourceRequestCpu));
     }
 
     @DataBoundSetter
@@ -965,11 +818,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
         return this;
     }
 
-    @Deprecated
-    public Pod build(KubernetesClient client, ArmadaSlave slave) {
-        return build(slave);
-    }
-
     /**
      * Build a Pod object from a PodTemplate
      *
@@ -977,15 +825,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
      */
     public Pod build(ArmadaSlave slave) {
         return new PodTemplateBuilder(this, slave).build();
-    }
-
-    /**
-     * @deprecated Use {@code Serialization.asYaml(build(KubernetesSlave))} instead.
-     */
-    @Deprecated
-    public String getDescriptionForLogging() {
-        return String.format(
-                "Agent specification [%s] (%s): %n%s", getName(), getLabel(), getContainersDescriptionForLogging());
     }
 
     public boolean isInheritYamlMergeStrategy() {
@@ -1130,7 +969,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
                 + (!alwaysPullImage ? "" : ", alwaysPullImage=" + alwaysPullImage)
                 + (command == null ? "" : ", command='" + command + '\'')
                 + (args == null ? "" : ", args='" + args + '\'')
-                + (remoteFs == null ? "" : ", remoteFs='" + remoteFs + '\'')
                 + (instanceCap == Integer.MAX_VALUE ? "" : ", instanceCap=" + instanceCap)
                 + (slaveConnectTimeout == DEFAULT_SLAVE_JENKINS_CONNECTION_TIMEOUT
                         ? ""
