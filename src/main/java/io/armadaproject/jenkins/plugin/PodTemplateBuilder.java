@@ -155,11 +155,6 @@ public class PodTemplateBuilder {
     @CheckForNull
     private ArmadaCloud cloud;
 
-    @Deprecated
-    public PodTemplateBuilder(PodTemplate template) {
-        this.template = template;
-    }
-
     public PodTemplateBuilder(PodTemplate template, ArmadaSlave agent) {
         this.template = template;
         this.agent = agent;

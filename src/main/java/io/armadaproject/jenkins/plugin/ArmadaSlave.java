@@ -38,7 +38,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import jenkins.metrics.api.Metrics;
 import jenkins.model.Jenkins;
@@ -50,7 +49,6 @@ import org.jenkinsci.plugins.durabletask.executors.OnceRetentionStrategy;
 import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuthException;
 import org.jenkinsci.plugins.workflow.flow.FlowExecutionOwner;
 import org.jvnet.localizer.ResourceBundleHolder;
-import org.kohsuke.stapler.DataBoundConstructor;
 
 /**
  * @author Carlos Sanchez carlos@apache.org
@@ -151,22 +149,6 @@ public class ArmadaSlave extends AbstractCloudSlave {
             }
         }
         return TaskListener.NULL;
-    }
-
-    /**
-     * @deprecated Use {@link Builder} instead.
-     */
-    @Deprecated
-    @DataBoundConstructor // make stapler happy. Not actually used.
-    public ArmadaSlave(
-            PodTemplate template, String nodeDescription, String cloudName, String labelStr, RetentionStrategy rs,
-            String armadaJobSetId,
-            String armadaJobId,
-            String serverUrl,
-            String clusterId,
-            String podName)
-            throws Descriptor.FormException, IOException {
-        this(getSlaveName(template), template, nodeDescription, cloudName, labelStr, new ArmadaLauncher(), rs, armadaJobSetId, armadaJobId, serverUrl, clusterId, podName);
     }
 
     protected ArmadaSlave(

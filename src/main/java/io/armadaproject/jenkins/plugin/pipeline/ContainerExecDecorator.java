@@ -115,68 +115,6 @@ public class ContainerExecDecorator extends LauncherDecorator implements Seriali
     public ContainerExecDecorator() {}
 
     @Deprecated
-    public ContainerExecDecorator(
-            KubernetesClient client,
-            String podName,
-            String containerName,
-            String namespace,
-            EnvironmentExpander environmentExpander,
-            FilePath ws) {
-        this.containerName = containerName;
-        this.environmentExpander = environmentExpander;
-    }
-
-    @Deprecated
-    public ContainerExecDecorator(
-            KubernetesClient client,
-            String podName,
-            String containerName,
-            String namespace,
-            EnvironmentExpander environmentExpander) {
-        this(client, podName, containerName, namespace, environmentExpander, null);
-    }
-
-    @Deprecated
-    public ContainerExecDecorator(KubernetesClient client, String podName, String containerName, String namespace) {
-        this(client, podName, containerName, namespace, null, null);
-    }
-
-    @Deprecated
-    public ContainerExecDecorator(
-            KubernetesClient client,
-            String podName,
-            String containerName,
-            AtomicBoolean alive,
-            CountDownLatch started,
-            CountDownLatch finished,
-            String namespace) {
-        this(client, podName, containerName, namespace, null, null);
-    }
-
-    @Deprecated
-    public ContainerExecDecorator(
-            KubernetesClient client,
-            String podName,
-            String containerName,
-            AtomicBoolean alive,
-            CountDownLatch started,
-            CountDownLatch finished) {
-        this(client, podName, containerName, (String) null, null, null);
-    }
-
-    @Deprecated
-    public ContainerExecDecorator(
-            KubernetesClient client,
-            String podName,
-            String containerName,
-            String path,
-            AtomicBoolean alive,
-            CountDownLatch started,
-            CountDownLatch finished) {
-        this(client, podName, containerName, (String) null, null, null);
-    }
-
-    @Deprecated
     public KubernetesClient getClient() {
         try {
             return nodeContext.connectToCloud();
@@ -186,13 +124,7 @@ public class ContainerExecDecorator extends LauncherDecorator implements Seriali
     }
 
     @Deprecated
-    public void setClient(KubernetesClient client) {
-        // NOOP
-    }
-
-    @Deprecated
-    // TODO make private
-    public String getPodName() {
+    private String getPodName() {
         try {
             return getNodeContext().getPodName();
         } catch (Exception e) {
@@ -201,23 +133,12 @@ public class ContainerExecDecorator extends LauncherDecorator implements Seriali
     }
 
     @Deprecated
-    public void setPodName(String podName) {
-        // NOOP
-    }
-
-    @Deprecated
-    // TODO make private
-    public String getNamespace() {
+    private String getNamespace() {
         try {
             return getNodeContext().getNamespace();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    @Deprecated
-    public void setNamespace(String namespace) {
-        // NOOP
     }
 
     public String getContainerName() {
@@ -906,11 +827,6 @@ public class ContainerExecDecorator extends LauncherDecorator implements Seriali
         } catch (Exception e) {
             LOGGER.log(Level.INFO, "failed to close watch", e);
         }
-    }
-
-    @Deprecated
-    public void setKubernetesClient(KubernetesClient client) {
-        // NOOP
     }
 
     private static String[] fixDoubleDollar(String[] envVars) {

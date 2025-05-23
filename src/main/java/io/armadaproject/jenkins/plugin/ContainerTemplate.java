@@ -17,7 +17,6 @@ import java.util.Objects;
 import java.util.TreeMap;
 import jenkins.model.Jenkins;
 import org.apache.commons.lang.StringUtils;
-import io.armadaproject.jenkins.plugin.Messages;
 import io.armadaproject.jenkins.plugin.model.TemplateEnvVar;
 import org.jenkinsci.Symbol;
 import org.kohsuke.accmod.Restricted;
@@ -69,11 +68,6 @@ public class ContainerTemplate extends AbstractDescribableImpl<ContainerTemplate
     private List<PortMapping> ports = new ArrayList<>();
 
     private ContainerLivenessProbe livenessProbe;
-
-    @Deprecated
-    public ContainerTemplate(String image) {
-        this(null, image);
-    }
 
     @DataBoundConstructor
     public ContainerTemplate(String name, String image) {

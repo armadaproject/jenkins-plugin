@@ -45,7 +45,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
-import io.armadaproject.jenkins.plugin.ContainerEnvVar;
 import io.armadaproject.jenkins.plugin.ContainerTemplate;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
 import io.armadaproject.jenkins.plugin.ArmadaComputer;
@@ -155,7 +154,8 @@ public abstract class AbstractKubernetesPipelineTest {
     @Before
     public void configureCloud() throws Exception {
         cloud = setupCloud(this, name);
-        createSecret(cloud.connect(), cloud.getNamespace());
+        // TODO fix this
+//        createSecret(cloud.connect(), cloud.getNamespace());
         cloud.getTemplates().clear();
         cloud.addTemplate(buildBusyboxTemplate("busybox"));
 
@@ -194,14 +194,12 @@ public abstract class AbstractKubernetesPipelineTest {
         TemplateEnvVar podSimpleEnvVar = new KeyValueEnvVar("POD_ENV_VAR", POD_ENV_VAR_VALUE);
         podTemplate.setEnvVars(asList(podSecretEnvVar, podSimpleEnvVar));
         TemplateEnvVar containerEnvVariable = new KeyValueEnvVar("CONTAINER_ENV_VAR", CONTAINER_ENV_VAR_VALUE);
-        TemplateEnvVar containerEnvVariableLegacy =
-                new ContainerEnvVar("CONTAINER_ENV_VAR_LEGACY", CONTAINER_ENV_VAR_VALUE);
         TemplateEnvVar containerSecretEnvVariable =
                 new SecretEnvVar("CONTAINER_ENV_VAR_FROM_SECRET", "container-secret", SECRET_KEY, false);
         podTemplate
                 .getContainers()
                 .get(0)
-                .setEnvVars(asList(containerEnvVariable, containerEnvVariableLegacy, containerSecretEnvVariable));
+                .setEnvVars(asList(containerEnvVariable, containerSecretEnvVariable));
     }
 
     protected void createNamespaceIfNotExist(KubernetesClient client, String namespace) {

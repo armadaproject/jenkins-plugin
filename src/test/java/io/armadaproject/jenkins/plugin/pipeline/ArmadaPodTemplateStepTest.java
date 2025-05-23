@@ -2,7 +2,6 @@ package io.armadaproject.jenkins.plugin.pipeline;
 
 import io.armadaproject.jenkins.plugin.pod.retention.OnFailure;
 import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
-import io.armadaproject.jenkins.plugin.volumes.workspace.DynamicPVCWorkspaceVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.EmptyDirWorkspaceVolume;
 import org.jenkinsci.plugins.workflow.cps.SnippetizerTester;
 import org.junit.Rule;

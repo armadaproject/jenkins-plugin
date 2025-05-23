@@ -9,7 +9,6 @@ import io.jenkins.plugins.casc.misc.RoundTripAbstractTest;
 import java.util.List;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
 import io.armadaproject.jenkins.plugin.PodTemplate;
-import io.armadaproject.jenkins.plugin.volumes.workspace.DynamicPVCWorkspaceVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.EmptyDirWorkspaceVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.GenericEphemeralWorkspaceVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.HostPathWorkspaceVolume;

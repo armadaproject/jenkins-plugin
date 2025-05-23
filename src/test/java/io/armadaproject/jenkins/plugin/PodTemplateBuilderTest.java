@@ -46,7 +46,6 @@ import io.armadaproject.jenkins.plugin.volumes.ConfigMapVolume;
 import io.armadaproject.jenkins.plugin.volumes.EmptyDirVolume;
 import io.armadaproject.jenkins.plugin.volumes.HostPathVolume;
 import io.armadaproject.jenkins.plugin.volumes.PodVolume;
-import io.armadaproject.jenkins.plugin.volumes.workspace.DynamicPVCWorkspaceVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.EmptyDirWorkspaceVolume;
 import org.hamcrest.Matcher;
 import org.junit.Before;

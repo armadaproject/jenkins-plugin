@@ -1,7 +1,6 @@
 package io.armadaproject.jenkins.plugin;
 
 import static org.apache.commons.lang.StringUtils.isEmpty;
-import static io.armadaproject.jenkins.plugin.KubernetesFactoryAdapter.resolveCredentials;
 
 import api.Health.HealthCheckResponse.ServingStatus;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
@@ -29,7 +28,6 @@ import hudson.util.FormApply;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import hudson.util.XStream2;
-import io.armadaproject.ArmadaClient;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -57,12 +55,10 @@ import jenkins.model.JenkinsLocationConfiguration;
 import jenkins.security.FIPS140;
 import jenkins.util.SystemProperties;
 import jenkins.websocket.WebSockets;
-import net.bytebuddy.implementation.bytecode.Throw;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import io.armadaproject.jenkins.plugin.pipeline.PodTemplateMap;
 import org.jenkinsci.plugins.kubernetes.auth.KubernetesAuth;
-import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
@@ -91,9 +87,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private static final Logger LOGGER = Logger.getLogger(ArmadaCloud.class.getName());
 
     public static final String JNLP_NAME = "jnlp";
-    /** label for all pods started by the plugin */
-    @Deprecated
-    public static final Map<String, String> DEFAULT_POD_LABELS = Collections.singletonMap("jenkins", "slave");
 
     /** Default timeout for idle workers that don't correctly indicate exit. */
     public static final int DEFAULT_RETENTION_TIMEOUT_MINUTES = 5;
@@ -114,16 +107,14 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private String armadaCredentialsId;
     private String armadaLookoutUrl;
     private String armadaLookoutPort;
-    private String armadaJobSetPrefix;
+    private String armadaJobSetPrefix = "";
     private String armadaClusterConfigPath;
-    private ArmadaJobSetStrategy armadaJobSetStrategy;
+    private ArmadaJobSetStrategy armadaJobSetStrategy = new DailyArmadaJobSetStrategy("");
 
     private boolean useJenkinsProxy;
 
     private boolean skipTlsVerify;
     private boolean addMasterProxyEnvVars;
-
-    private boolean capOnlyOnAlivePods;
 
     private String jnlpregistry;
     private boolean restrictedPssSecurityContext = false;
@@ -141,9 +132,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
     private int retentionTimeout = DEFAULT_RETENTION_TIMEOUT_MINUTES;
     private int connectTimeout = DEFAULT_CONNECT_TIMEOUT_SECONDS;
     private int readTimeout = DEFAULT_READ_TIMEOUT_SECONDS;
-    /** @deprecated Stored as a list of PodLabels */
-    @Deprecated
-    private transient Map<String, String> labels;
 
     private List<PodLabel> podLabels = new ArrayList<>();
     private boolean usageRestricted;
@@ -183,27 +171,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         xs.omitField(ArmadaCloud.class, "templates"); // TODO PodTemplate and fields needs to implement equals
         xs.unmarshal(XStream2.getDefaultDriver().createReader(new StringReader(xs.toXML(source))), this);
         this.templates.addAll(source.templates);
-    }
-
-    @Deprecated
-    public ArmadaCloud(
-            String name,
-            List<? extends PodTemplate> templates,
-            String jenkinsUrl,
-            String containerCapStr,
-            int connectTimeout,
-            int readTimeout,
-            int retentionTimeout) {
-        this(name);
-
-        setJenkinsUrl(jenkinsUrl);
-        if (templates != null) {
-            this.templates.addAll(templates);
-        }
-        setContainerCapStr(containerCapStr);
-        setRetentionTimeout(retentionTimeout);
-        setConnectTimeout(connectTimeout);
-        setReadTimeout(readTimeout);
     }
 
     public boolean isUseJenkinsProxy() {
@@ -385,17 +352,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         return jenkinsUrl;
     }
 
-    @DataBoundSetter
-    @Deprecated
-    public void setCapOnlyOnAlivePods(boolean capOnlyOnAlivePods) {
-        this.capOnlyOnAlivePods = capOnlyOnAlivePods;
-    }
-
-    @Deprecated
-    public boolean isCapOnlyOnAlivePods() {
-        return capOnlyOnAlivePods;
-    }
-
     /**
      * @return same as {@link #getJenkinsUrlOrNull}, if set
      * @throws IllegalStateException if no Jenkins URL could be computed.
@@ -513,31 +469,10 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
 
     /**
      * Labels for all pods started by the plugin
-     * @return immutable map of pod labels
-     * @deprecated use {@link #getPodLabels()}
-     */
-    @Deprecated
-    public Map<String, String> getLabels() {
-        return getPodLabelsMap();
-    }
-
-    /**
-     * Set pod labels
-     *
-     * @param labels pod labels
-     * @deprecated use {@link #setPodLabels(List)}
-     */
-    @Deprecated
-    public void setLabels(Map<String, String> labels) {
-        setPodLabels(labels != null ? PodLabel.fromMap(labels) : Collections.emptyList());
-    }
-
-    /**
-     * Labels for all pods started by the plugin
      */
     @NonNull
     public List<PodLabel> getPodLabels() {
-        return podLabels == null || podLabels.isEmpty() ? PodLabel.fromMap(DEFAULT_POD_LABELS) : podLabels;
+        return podLabels == null || podLabels.isEmpty() ? PodLabel.fromMap(Map.of()) : podLabels;
     }
 
     /**
@@ -714,17 +649,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
      * Gets all PodTemplates that have the matching {@link Label}.
      * @param label label to look for in templates
      * @return list of matching templates
-     * @deprecated Use {@link #getTemplatesFor(Label)} instead.
-     */
-    @Deprecated
-    public ArrayList<PodTemplate> getMatchingTemplates(@CheckForNull Label label) {
-        return new ArrayList<>(getTemplatesFor(label));
-    }
-
-    /**
-     * Gets all PodTemplates that have the matching {@link Label}.
-     * @param label label to look for in templates
-     * @return list of matching templates
      */
     public List<PodTemplate> getTemplatesFor(@CheckForNull Label label) {
         return PodTemplateFilter.applyAll(this, getAllTemplates(), label);
@@ -779,7 +703,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
         return Objects.equals(name, that.name)
                 && skipTlsVerify == that.skipTlsVerify
                 && addMasterProxyEnvVars == that.addMasterProxyEnvVars
-                && capOnlyOnAlivePods == that.capOnlyOnAlivePods
                 && Objects.equals(containerCap, that.containerCap)
                 && retentionTimeout == that.retentionTimeout
                 && connectTimeout == that.connectTimeout
@@ -805,7 +728,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 templates,
                 skipTlsVerify,
                 addMasterProxyEnvVars,
-                capOnlyOnAlivePods,
                 jnlpregistry,
                 jenkinsUrl,
                 jenkinsTunnel,
@@ -1095,7 +1017,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 + defaultsProviderTemplate + '\'' + ", serverUrl='"
                 + skipTlsVerify + ", addMasterProxyEnvVars="
                 + addMasterProxyEnvVars + ", capOnlyOnAlivePods="
-                + capOnlyOnAlivePods +  ", jnlpregistry='"
                 + jnlpregistry + '\'' + ", jenkinsUrl='"
                 + jenkinsUrl + '\'' + ", jenkinsTunnel='"
                 + jenkinsTunnel + '\'' + ", credentialsId='"
@@ -1105,7 +1026,6 @@ public class ArmadaCloud extends Cloud implements PodTemplateGroup {
                 + retentionTimeout + ", connectTimeout="
                 + connectTimeout + ", readTimeout="
                 + readTimeout + ", labels="
-                + labels + ", podLabels="
                 + podLabels + ", usageRestricted="
                 + usageRestricted + ", maxRequestsPerHost="
                 + maxRequestsPerHost + ", waitForPodSec="

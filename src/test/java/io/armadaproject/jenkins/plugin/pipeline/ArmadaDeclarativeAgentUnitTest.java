@@ -8,7 +8,6 @@ import java.util.Collections;
 import java.util.Map;
 import io.armadaproject.jenkins.plugin.pod.retention.Never;
 import io.armadaproject.jenkins.plugin.pod.yaml.Merge;
-import io.armadaproject.jenkins.plugin.volumes.workspace.DynamicPVCWorkspaceVolume;
 import org.jenkinsci.plugins.pipeline.modeldefinition.generator.AgentDirective;
 import org.jenkinsci.plugins.pipeline.modeldefinition.generator.DirectiveGeneratorTester;
 import org.junit.Before;

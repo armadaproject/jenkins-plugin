@@ -4,14 +4,12 @@ import static io.armadaproject.jenkins.plugin.pipeline.Constants.*;
 
 import hudson.Proc;
 import io.fabric8.kubernetes.client.dsl.ExecWatch;
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -36,28 +34,6 @@ public class ContainerExecProc extends Proc implements Closeable, Runnable {
     private final OutputStream stdin;
 
     private final PrintStream printStream;
-
-    @Deprecated
-    public ContainerExecProc(
-            ExecWatch watch, AtomicBoolean alive, CountDownLatch finished, Callable<Integer> exitCode) {
-        this(watch, alive, finished, (OutputStream) null, (PrintStream) null);
-    }
-
-    @Deprecated
-    public ContainerExecProc(
-            ExecWatch watch, AtomicBoolean alive, CountDownLatch finished, ByteArrayOutputStream error) {
-        this(watch, alive, finished, (OutputStream) null, (PrintStream) null);
-    }
-
-    @Deprecated
-    public ContainerExecProc(
-            ExecWatch watch,
-            AtomicBoolean alive,
-            CountDownLatch finished,
-            OutputStream stdin,
-            ByteArrayOutputStream error) {
-        this(watch, alive, finished, stdin, (PrintStream) null);
-    }
 
     public ContainerExecProc(
             ExecWatch watch,

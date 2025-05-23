@@ -17,7 +17,6 @@ import io.armadaproject.jenkins.plugin.ArmadaCloud;
 import io.armadaproject.jenkins.plugin.PodTemplate;
 import io.armadaproject.jenkins.plugin.pod.yaml.Merge;
 import io.armadaproject.jenkins.plugin.pod.yaml.Overrides;
-import io.armadaproject.jenkins.plugin.volumes.workspace.DynamicPVCWorkspaceVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.WorkspaceVolume;
 import org.jvnet.hudson.test.RestartableJenkinsRule;
 
