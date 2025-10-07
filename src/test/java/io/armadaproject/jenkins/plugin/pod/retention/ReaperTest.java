@@ -51,8 +51,8 @@ import jenkins.model.Jenkins;
 import okhttp3.mockwebserver.RecordedRequest;
 import io.armadaproject.jenkins.plugin.KubernetesClientProvider;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesComputer;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaComputer;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.armadaproject.jenkins.plugin.PodTemplate;
 import org.junit.After;
 import org.junit.Rule;
@@ -90,7 +90,7 @@ public class ReaperTest {
                 .always();
 
         // add node that does not exist in k8s so it get's removed
-        KubernetesSlave podNotRunning = addNode(cloud, "k8s-node-123", "k8s-node");
+        ArmadaSlave podNotRunning = addNode(cloud, "k8s-node-123", "k8s-node");
         assertEquals("node added to jenkins", j.jenkins.getNodes().size(), 1);
 
         // activate reaper
@@ -110,7 +110,7 @@ public class ReaperTest {
                 .assertRequestCountAtLeast(watchPodsPath, 1);
 
         // create new node to verify activate is not run again
-        KubernetesSlave newNode = addNode(cloud, "new-123", "new");
+        ArmadaSlave newNode = addNode(cloud, "new-123", "new");
         j.jenkins.addNode(newNode);
         assertEquals("node added to jenkins", j.jenkins.getNodes().size(), 1);
         // call again should not add any more calls
@@ -150,9 +150,9 @@ public class ReaperTest {
 
         // add new cloud
         ArmadaCloud cloud = addCloud("k8s", "foo");
-        KubernetesSlave n2 = addNode(cloud, "p1-123", "p1");
+        ArmadaSlave n2 = addNode(cloud, "p1-123", "p1");
         TaskListener tl = mock(TaskListener.class);
-        KubernetesComputer kc = new KubernetesComputer(n2);
+        ArmadaComputer kc = new ArmadaComputer(n2);
 
         // should not be watching the newly created cloud at this point
         assertShouldNotBeWatching(r, cloud);
@@ -208,9 +208,9 @@ public class ReaperTest {
         System.out.println("Watch removed");
 
         // launch computer
-        KubernetesSlave n2 = addNode(cloud, "p1-123", "p1");
+        ArmadaSlave n2 = addNode(cloud, "p1-123", "p1");
         TaskListener tl = mock(TaskListener.class);
-        KubernetesComputer kc = new KubernetesComputer(n2);
+        ArmadaComputer kc = new ArmadaComputer(n2);
         r.preLaunch(kc, tl);
 
         // should have started new watch
@@ -319,7 +319,7 @@ public class ReaperTest {
         cloud.setNamespace("bar");
         j.jenkins.save();
 
-        KubernetesSlave node = addNode(cloud, "node-123", "node");
+        ArmadaSlave node = addNode(cloud, "node-123", "node");
 
         // watch is still active
         assertShouldBeWatching(r, cloud);
@@ -466,7 +466,7 @@ public class ReaperTest {
     @Test(timeout = 10_000)
     public void testDeleteNodeOnPodDelete() throws IOException, InterruptedException {
         ArmadaCloud cloud = addCloud("k8s", "foo");
-        KubernetesSlave node = addNode(cloud, "node-123", "node");
+        ArmadaSlave node = addNode(cloud, "node-123", "node");
         Pod node123 = createPod(node);
 
         server.expect()
@@ -509,7 +509,7 @@ public class ReaperTest {
     @Test(timeout = 10_000)
     public void testTerminateAgentOnContainerTerminated() throws IOException, InterruptedException {
         ArmadaCloud cloud = addCloud("k8s", "foo");
-        KubernetesSlave node = addNode(cloud, "node-123", "node");
+        ArmadaSlave node = addNode(cloud, "node-123", "node");
         Pod node123 = withContainerStatusTerminated(createPod(node));
 
         String watchPodsPath = "/api/v1/namespaces/foo/pods?allowWatchBookmarks=true&watch=true";
@@ -566,7 +566,7 @@ public class ReaperTest {
     public void testTerminateAgentOnPodFailed() throws IOException, InterruptedException {
         System.out.println(server.getKubernetesMockServer().getPort());
         ArmadaCloud cloud = addCloud("k8s", "foo");
-        KubernetesSlave node = addNode(cloud, "node-123", "node");
+        ArmadaSlave node = addNode(cloud, "node-123", "node");
         Pod node123 = createPod(node);
         node123.getStatus().setPhase("Failed");
 
@@ -607,7 +607,7 @@ public class ReaperTest {
     @Test(timeout = 10_000)
     public void testTerminateAgentOnImagePullBackoff() throws IOException, InterruptedException {
         ArmadaCloud cloud = addCloud("k8s", "foo");
-        KubernetesSlave node = addNode(cloud, "node-123", "node");
+        ArmadaSlave node = addNode(cloud, "node-123", "node");
         Pod node123 = withContainerImagePullBackoff(createPod(node));
         Reaper.TerminateAgentOnImagePullBackOff.BACKOFF_EVENTS_LIMIT = 2;
 
@@ -684,7 +684,7 @@ public class ReaperTest {
         return pod;
     }
 
-    private Pod createPod(KubernetesSlave node) {
+    private Pod createPod(ArmadaSlave node) {
         return new PodBuilder()
                 .withNewMetadata()
                 .withName(node.getPodName())
@@ -698,12 +698,12 @@ public class ReaperTest {
                 .build();
     }
 
-    private KubernetesSlave addNode(ArmadaCloud cld, String podName, String nodeName) throws IOException {
-        KubernetesSlave node = mock(KubernetesSlave.class);
+    private ArmadaSlave addNode(ArmadaCloud cld, String podName, String nodeName) throws IOException {
+        ArmadaSlave node = mock(ArmadaSlave.class);
         when(node.getNodeName()).thenReturn(nodeName);
         when(node.getNamespace()).thenReturn(cld.getNamespace());
         when(node.getPodName()).thenReturn(podName);
-        when(node.getKubernetesCloud()).thenReturn(cld);
+        when(node.getArmadaCloud()).thenReturn(cld);
         when(node.getCloudName()).thenReturn(cld.name);
         when(node.getNumExecutors()).thenReturn(1);
         PodTemplate podTemplate = new PodTemplate();
@@ -711,7 +711,7 @@ public class ReaperTest {
         when(node.getRunListener()).thenReturn(StreamTaskListener.fromStderr());
         ComputerLauncher launcher = mock(ComputerLauncher.class);
         when(node.getLauncher()).thenReturn(launcher);
-        KubernetesComputer computer = mock(KubernetesComputer.class);
+        ArmadaComputer computer = mock(ArmadaComputer.class);
         when(node.getComputer()).thenReturn(computer);
         j.jenkins.addNode(node);
         return node;
@@ -803,7 +803,7 @@ public class ReaperTest {
         @Override
         public synchronized void onEvent(
                 @NonNull Watcher.Action action,
-                @NonNull KubernetesSlave node,
+                @NonNull ArmadaSlave node,
                 @NonNull Pod pod,
                 @NonNull Set<String> terminationReaons)
                 throws IOException, InterruptedException {
@@ -843,7 +843,7 @@ public class ReaperTest {
          * @param action action to match
          * @param node target node
          */
-        public synchronized void expectEvent(Watcher.Action action, KubernetesSlave node) {
+        public synchronized void expectEvent(Watcher.Action action, ArmadaSlave node) {
             boolean found = CAPTURED_EVENTS.stream().anyMatch(e -> e.action == action && e.node == node);
             assertTrue("expected event: " + action + ", " + node, found);
         }
@@ -863,10 +863,10 @@ public class ReaperTest {
 
     private static class ReaperListenerWatchEvent {
         final Watcher.Action action;
-        final KubernetesSlave node;
+        final ArmadaSlave node;
         final Pod pod;
 
-        private ReaperListenerWatchEvent(Watcher.Action action, KubernetesSlave node, Pod pod) {
+        private ReaperListenerWatchEvent(Watcher.Action action, ArmadaSlave node, Pod pod) {
             this.action = action;
             this.node = node;
             this.pod = pod;

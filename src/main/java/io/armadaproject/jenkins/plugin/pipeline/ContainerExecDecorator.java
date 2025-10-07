@@ -28,8 +28,7 @@ import hudson.Proc;
 import hudson.model.Computer;
 import hudson.model.Node;
 import io.armadaproject.jenkins.plugin.ContainerTemplate;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
-import io.armadaproject.jenkins.plugin.PodTemplateBuilder;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -270,7 +269,7 @@ public class ContainerExecDecorator extends LauncherDecorator implements Seriali
 
         // Allows other nodes to be provisioned inside the container clause
         // If the node is not a KubernetesSlave return the original launcher
-        if (node != null && !(node instanceof KubernetesSlave)) {
+        if (node != null && !(node instanceof ArmadaSlave)) {
             return launcher;
         }
         return new Launcher.DecoratedLauncher(launcher) {
@@ -279,7 +278,7 @@ public class ContainerExecDecorator extends LauncherDecorator implements Seriali
                 LOGGER.log(Level.FINEST, "Launch proc with environment: {0}", Arrays.toString(starter.envs()));
 
                 // find container working dir
-                KubernetesSlave slave = (KubernetesSlave) node;
+                ArmadaSlave slave = (ArmadaSlave) node;
                 FilePath containerWorkingDirFilePath = starter.pwd();
                 String containerWorkingDirFilePathStr = containerWorkingDirFilePath != null
                         ? containerWorkingDirFilePath.getRemote()

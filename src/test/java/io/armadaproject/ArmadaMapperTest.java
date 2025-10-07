@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 
 import api.SubmitOuterClass.JobSubmitRequest;
 import api.SubmitOuterClass.JobSubmitRequestItem;
+import io.armadaproject.jenkins.plugin.job.ArmadaMapper;
 import io.fabric8.kubernetes.api.model.ContainerPort;
 import io.fabric8.kubernetes.api.model.ContainerResizePolicy;
 import io.fabric8.kubernetes.api.model.ObjectMeta;

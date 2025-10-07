@@ -9,7 +9,6 @@ import hudson.model.Label;
 import hudson.util.ListBoxModel;
 import io.armadaproject.jenkins.plugin.ContainerTemplate;
 import io.armadaproject.jenkins.plugin.PodTemplate;
-import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
 import io.armadaproject.jenkins.plugin.pod.yaml.YamlMergeStrategy;
 import java.util.Collections;
 import java.util.List;
@@ -71,9 +70,6 @@ public class ArmadaDeclarativeAgent extends RetryableDeclarativeAgent<ArmadaDecl
 
     private int activeDeadlineSeconds;
     private int slaveConnectTimeout;
-
-    @CheckForNull
-    private PodRetention podRetention;
 
     private ContainerTemplate containerTemplate;
     private List<ContainerTemplate> containerTemplates;
@@ -287,18 +283,6 @@ public class ArmadaDeclarativeAgent extends RetryableDeclarativeAgent<ArmadaDecl
         this.slaveConnectTimeout = slaveConnectTimeout;
     }
 
-    public PodRetention getPodRetention() {
-        return this.podRetention == null ? ArmadaPodTemplateStep.DescriptorImpl.defaultPodRetention : this.podRetention;
-    }
-
-    @DataBoundSetter
-    public void setPodRetention(@CheckForNull PodRetention podRetention) {
-        this.podRetention =
-                (podRetention == null || podRetention.equals(ArmadaPodTemplateStep.DescriptorImpl.defaultPodRetention))
-                        ? null
-                        : podRetention;
-    }
-
     public String getYamlFile() {
         return yamlFile;
     }
@@ -439,9 +423,6 @@ public class ArmadaDeclarativeAgent extends RetryableDeclarativeAgent<ArmadaDecl
         if (slaveConnectTimeout != 0) {
             argMap.put("slaveConnectTimeout", slaveConnectTimeout);
         }
-        if (podRetention != null) {
-            argMap.put("podRetention", podRetention);
-        }
         if (instanceCap > 0 && instanceCap < Integer.MAX_VALUE) {
             argMap.put("instanceCap", instanceCap);
         }
@@ -468,7 +449,6 @@ public class ArmadaDeclarativeAgent extends RetryableDeclarativeAgent<ArmadaDecl
             "yaml",
             "showRawYaml",
             "instanceCap",
-            "podRetention",
             "supplementalGroups",
             "idleMinutes",
             "activeDeadlineSeconds",
@@ -505,10 +485,6 @@ public class ArmadaDeclarativeAgent extends RetryableDeclarativeAgent<ArmadaDecl
         public ListBoxModel doFillInheritFromItems(@QueryParameter("cloud") String cloudName) {
             return ExtensionList.lookupSingleton(ArmadaPodTemplateStep.DescriptorImpl.class)
                     .doFillInheritFromItems(cloudName);
-        }
-
-        public PodRetention getDefaultPodRetention() {
-            return PodRetention.getPodTemplateDefault();
         }
 
         public WorkspaceVolume getDefaultWorkspaceVolume() {

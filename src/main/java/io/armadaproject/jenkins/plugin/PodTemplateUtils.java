@@ -466,7 +466,6 @@ public class PodTemplateUtils {
         PodTemplate podTemplate = new PodTemplate(template.getId());
         var h = new HierarchyResolver<>(parent, template);
         podTemplate.setName(name);
-        podTemplate.setNamespace(h.resolve(PodTemplate::getNamespace, PodTemplateUtils::isNullOrEmpty));
         podTemplate.setLabel(label);
         podTemplate.setNodeSelector(h.resolve(PodTemplate::getNodeSelector, PodTemplateUtils::isNullOrEmpty));
         podTemplate.setServiceAccount(h.resolve(PodTemplate::getServiceAccount, PodTemplateUtils::isNullOrEmpty));
@@ -494,7 +493,6 @@ public class PodTemplateUtils {
                 h.resolve(PodTemplate::getActiveDeadlineSeconds, i -> Objects.equals(i, 0)));
         podTemplate.setServiceAccount(h.resolve(PodTemplate::getServiceAccount, PodTemplateUtils::isNullOrEmpty));
         podTemplate.setSchedulerName(h.resolve(PodTemplate::getSchedulerName, PodTemplateUtils::isNullOrEmpty));
-        podTemplate.setPodRetention(template.getPodRetention());
         podTemplate.setShowRawYaml(h.resolve(PodTemplate::isShowRawYaml, v -> v));
         podTemplate.setRunAsUser(h.resolve(PodTemplate::getRunAsUser, Objects::isNull));
         podTemplate.setRunAsGroup(h.resolve(PodTemplate::getRunAsGroup, Objects::isNull));

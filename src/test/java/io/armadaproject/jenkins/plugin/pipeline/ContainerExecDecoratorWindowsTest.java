@@ -59,7 +59,7 @@ import org.apache.commons.io.output.TeeOutputStream;
 import org.apache.commons.lang.RandomStringUtils;
 import io.armadaproject.jenkins.plugin.KubernetesClientProvider;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.armadaproject.jenkins.plugin.PodTemplate;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
 import org.junit.After;
@@ -86,7 +86,7 @@ public class ContainerExecDecoratorWindowsTest {
 
     private ContainerExecDecorator decorator;
     private Pod pod;
-    private KubernetesSlave agent;
+    private ArmadaSlave agent;
 
     @Rule
     public LoggerRule containerExecLogs = new LoggerRule()
@@ -134,10 +134,10 @@ public class ContainerExecDecoratorWindowsTest {
         client.pods().withName(podName).waitUntilReady(10, TimeUnit.MINUTES);
         PodTemplate template = new PodTemplate();
         template.setName(pod.getMetadata().getName());
-        agent = mock(KubernetesSlave.class);
+        agent = mock(ArmadaSlave.class);
         when(agent.getNamespace()).thenReturn(client.getNamespace());
         when(agent.getPodName()).thenReturn(pod.getMetadata().getName());
-        doReturn(cloud).when(agent).getKubernetesCloud();
+        doReturn(cloud).when(agent).getArmadaCloud();
         when(agent.getPod()).thenReturn(Optional.of(pod));
         StepContext context = mock(StepContext.class);
         when(context.get(Node.class)).thenReturn(agent);

@@ -20,8 +20,8 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import hudson.Extension;
 import hudson.remoting.Channel;
 import hudson.util.LogTaskListener;
-import io.armadaproject.jenkins.plugin.KubernetesComputer;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaComputer;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.armadaproject.jenkins.plugin.PodTemplate;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.EnvVar;
@@ -77,7 +77,7 @@ public final class SecretsMasker extends TaskListenerDecorator {
     @Extension
     public static final class Factory extends DynamicContext.Typed<TaskListenerDecorator> {
 
-        private final Map<KubernetesComputer, Set<String>> secrets = new WeakHashMap<>();
+        private final Map<ArmadaComputer, Set<String>> secrets = new WeakHashMap<>();
 
         @Override
         protected Class<TaskListenerDecorator> type() {
@@ -86,9 +86,9 @@ public final class SecretsMasker extends TaskListenerDecorator {
 
         @Override
         protected TaskListenerDecorator get(DelegatedContext context) throws IOException, InterruptedException {
-            KubernetesComputer c;
+            ArmadaComputer c;
             try {
-                c = context.get(KubernetesComputer.class);
+                c = context.get(ArmadaComputer.class);
             } catch (IOException | InterruptedException x) {
                 LOGGER.log(Level.FINE, "Unable to look up KubernetesComputer", x);
                 return null;
@@ -122,13 +122,13 @@ public final class SecretsMasker extends TaskListenerDecorator {
             }
         }
 
-        private static @CheckForNull Set<String> secretsOf(KubernetesComputer c)
+        private static @CheckForNull Set<String> secretsOf(ArmadaComputer c)
                 throws IOException, InterruptedException {
             Channel ch = c.getChannel();
             if (ch == null) {
                 return null;
             }
-            KubernetesSlave slave = c.getNode();
+            ArmadaSlave slave = c.getNode();
             if (slave == null) {
                 return null;
             }
@@ -165,8 +165,7 @@ public final class SecretsMasker extends TaskListenerDecorator {
                         return null;
                     }
                     try (OutputStream errs = new LogTaskListener(LOGGER, Level.FINE).getLogger();
-                            ExecWatch exec = slave.getKubernetesCloud()
-                                    .connect()
+                            ExecWatch exec = slave.connect()
                                     .pods()
                                     .inNamespace(slave.getNamespace())
                                     .withName(slave.getPodName())

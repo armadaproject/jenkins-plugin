@@ -66,16 +66,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import jenkins.metrics.api.Metrics;
 import jenkins.model.Jenkins;
-import io.armadaproject.jenkins.plugin.GarbageCollection;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesComputer;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.armadaproject.jenkins.plugin.KubernetesTestUtil;
 import io.armadaproject.jenkins.plugin.MetricNames;
 import io.armadaproject.jenkins.plugin.PodAnnotation;
@@ -96,7 +93,6 @@ import org.jenkinsci.plugins.workflow.steps.durable_task.DurableTaskStep;
 import org.jenkinsci.plugins.workflow.test.steps.SemaphoreStep;
 import org.jetbrains.annotations.NotNull;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Rule;
@@ -148,8 +144,8 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
             Thread.sleep(100);
         }
         Jenkins.get().getNodes().stream()
-                .filter(KubernetesSlave.class::isInstance)
-                .map(KubernetesSlave.class::cast)
+                .filter(ArmadaSlave.class::isInstance)
+                .map(ArmadaSlave.class::cast)
                 .forEach(agent -> {
                     LOGGER.info(() -> "Deleting remaining node " + agent);
                     try {
@@ -251,7 +247,7 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
                         .collect(Collectors.toList()), // LogRecord does not override toString
                 emptyIterable());
 
-        assertTrue(Metrics.metricRegistry().counter(MetricNames.PODS_LAUNCHED).getCount() > 0);
+        assertTrue(Metrics.metricRegistry().counter(MetricNames.JOBS_LAUNCHED).getCount() > 0);
     }
 
     @Test
@@ -502,9 +498,9 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         SemaphoreStep.waitForStart("pod/1", b);
         Map<String, String> labels = getLabels(cloud, this, name);
         labels.put("jenkins/label", "label1_label2");
-        KubernetesSlave node = r.jenkins.getNodes().stream()
-                .filter(KubernetesSlave.class::isInstance)
-                .map(KubernetesSlave.class::cast)
+        ArmadaSlave node = r.jenkins.getNodes().stream()
+                .filter(ArmadaSlave.class::isInstance)
+                .map(ArmadaSlave.class::cast)
                 .findAny()
                 .get();
         assertTrue(node.getAssignedLabels().containsAll(Label.parse("label1 label2")));
@@ -633,12 +629,12 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
                 .everywhere()
                 .to("admin"));
         SemaphoreStep.waitForStart("pod/1", b);
-        Optional<KubernetesSlave> optionalNode = r.jenkins.getNodes().stream()
-                .filter(KubernetesSlave.class::isInstance)
-                .map(KubernetesSlave.class::cast)
+        Optional<ArmadaSlave> optionalNode = r.jenkins.getNodes().stream()
+                .filter(ArmadaSlave.class::isInstance)
+                .map(ArmadaSlave.class::cast)
                 .findAny();
         assertTrue(optionalNode.isPresent());
-        KubernetesSlave node = optionalNode.get();
+        ArmadaSlave node = optionalNode.get();
 
         JenkinsRule.WebClient wc = r.createWebClient();
         wc.getOptions().setPrintContentOnFailingStatusCode(false);
@@ -884,35 +880,6 @@ public class KubernetesPipelineTest extends AbstractKubernetesPipelineTest {
         r.createOnlineSlave(Label.get("special-agent"));
         r.assertBuildStatus(Result.ABORTED, r.waitForCompletion(b));
         r.assertLogContains("ran on special agent", b);
-    }
-
-    @Test
-    public void garbageCollection() throws Exception {
-        // Pod exists, need to kill the build, delete the agent without deleting the pod.
-        // Wait for the timeout to expire and check that the pod is deleted.
-        var garbageCollection = new GarbageCollection();
-        // Considering org.csanchez.jenkins.plugins.kubernetes.GarbageCollection.recurrencePeriod=5, this leaves 3 ticks
-        garbageCollection.setTimeout(15);
-        cloud.setGarbageCollection(garbageCollection);
-        r.jenkins.save();
-        r.waitForMessage("Running on remote agent", b);
-        Pod pod = null;
-        for (var c : r.jenkins.getComputers()) {
-            if (c instanceof KubernetesComputer) {
-                var node = (KubernetesSlave) c.getNode();
-                pod = node.getPod().get();
-                Assert.assertNotNull(pod);
-                b.doKill();
-                r.jenkins.removeNode(node);
-                break;
-            }
-        }
-        r.assertBuildStatus(Result.ABORTED, r.waitForCompletion(b));
-        final var finalPod = pod;
-        var client = cloud.connect();
-        assertNotNull(client.resource(finalPod).get());
-        await().timeout(1, TimeUnit.MINUTES)
-                .until(() -> client.resource(finalPod).get() == null);
     }
 
     @Test

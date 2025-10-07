@@ -45,7 +45,7 @@ import org.apache.commons.io.IOUtils;
 import io.armadaproject.jenkins.plugin.ContainerEnvVar;
 import io.armadaproject.jenkins.plugin.ContainerTemplate;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import io.armadaproject.jenkins.plugin.PodTemplate;
 import io.armadaproject.jenkins.plugin.model.KeyValueEnvVar;
 import io.armadaproject.jenkins.plugin.model.SecretEnvVar;
@@ -284,10 +284,10 @@ public class RestartPipelineTest {
                     .getItemByFullName(projectName.get(), WorkflowJob.class)
                     .getBuildByNumber(1);
             Optional<Node> first = r.jenkins.getNodes().stream()
-                    .filter(KubernetesSlave.class::isInstance)
+                    .filter(ArmadaSlave.class::isInstance)
                     .findFirst();
             assertTrue("Kubernetes node should be present after restart", first.isPresent());
-            KubernetesSlave node = (KubernetesSlave) first.get();
+            ArmadaSlave node = (ArmadaSlave) first.get();
             r.waitForMessage("Ready to run", b);
             waitForTemplate(node).getListener().getLogger().println("This got printed");
             r.waitForMessage("This got printed", b);
@@ -311,10 +311,10 @@ public class RestartPipelineTest {
                     .getItemByFullName(projectName.get(), WorkflowJob.class)
                     .getBuildByNumber(1);
             Optional<Node> first = r.jenkins.getNodes().stream()
-                    .filter(KubernetesSlave.class::isInstance)
+                    .filter(ArmadaSlave.class::isInstance)
                     .findFirst();
             assertTrue("Kubernetes node should be present after restart", first.isPresent());
-            KubernetesSlave node = (KubernetesSlave) first.get();
+            ArmadaSlave node = (ArmadaSlave) first.get();
             r.waitForMessage("Ready to run", b);
             waitForTemplate(node).getListener().getLogger().println("This got printed");
             r.waitForMessage("This got printed", b);
@@ -323,7 +323,7 @@ public class RestartPipelineTest {
         });
     }
 
-    private PodTemplate waitForTemplate(KubernetesSlave node) throws InterruptedException {
+    private PodTemplate waitForTemplate(ArmadaSlave node) throws InterruptedException {
         while (node.getTemplateOrNull() == null) {
             Thread.sleep(100L);
         }

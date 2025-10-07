@@ -89,14 +89,14 @@ public class PodTemplateBuilderTest {
     private ArmadaCloud cloud = new ArmadaCloud("test");
 
     @Mock
-    private KubernetesSlave slave;
+    private ArmadaSlave slave;
 
     @Mock
-    private KubernetesComputer computer;
+    private ArmadaComputer computer;
 
     @Before
     public void setUp() {
-        when(slave.getKubernetesCloud()).thenReturn(cloud);
+        when(slave.getArmadaCloud()).thenReturn(cloud);
     }
 
     @WithoutJenkins
@@ -371,7 +371,7 @@ public class PodTemplateBuilderTest {
         when(computer.getName()).thenReturn(AGENT_NAME);
         when(computer.getJnlpMac()).thenReturn(AGENT_SECRET);
         when(slave.getComputer()).thenReturn(computer);
-        when(slave.getKubernetesCloud()).thenReturn(cloud);
+        when(slave.getArmadaCloud()).thenReturn(cloud);
     }
 
     private void validatePod(Pod pod, boolean directConnection) {
@@ -443,7 +443,7 @@ public class PodTemplateBuilderTest {
         validateContainers(pod, slave, directConnection);
     }
 
-    private void validateContainers(Pod pod, KubernetesSlave slave, boolean directConnection) {
+    private void validateContainers(Pod pod, ArmadaSlave slave, boolean directConnection) {
         String[] exclusions = new String[] {
             "JENKINS_URL", "JENKINS_SECRET", "JENKINS_NAME", "JENKINS_AGENT_NAME", "JENKINS_AGENT_WORKDIR"
         };
@@ -457,7 +457,7 @@ public class PodTemplateBuilderTest {
         }
     }
 
-    private void validateJnlpContainer(Container jnlp, KubernetesSlave slave, boolean directConnection) {
+    private void validateJnlpContainer(Container jnlp, ArmadaSlave slave, boolean directConnection) {
         assertThat(jnlp.getCommand(), empty());
         List<EnvVar> envVars = new ArrayList<>();
         if (slave != null) {
