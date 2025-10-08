@@ -29,10 +29,6 @@ THE SOFTWARE.
     <f:textbox/>
   </f:entry>
 
-  <f:entry field="namespace" title="${%Namespace}">
-    <f:textbox/>
-  </f:entry>
-
   <f:entry field="label" title="${%Labels}">
     <f:textbox/>
   </f:entry>
@@ -76,8 +72,6 @@ THE SOFTWARE.
   <f:entry field="instanceCapStr" title="${%Concurrency Limit}">
     <f:textbox/>
   </f:entry>
-
-  <f:dropdownDescriptorSelector title="${%Pod Retention}" field="podRetention" default="${descriptor.defaultPodRetention}" />
 
   <f:entry field="idleMinutesStr" title="${%Time in minutes to retain agent when idle}">
     <f:textbox/>

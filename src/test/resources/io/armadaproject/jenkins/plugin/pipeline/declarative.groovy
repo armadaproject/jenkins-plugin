@@ -8,7 +8,6 @@ pipeline {
         command 'sleep'
         args '9999999'
       }
-      podRetention onFailure()
     }
   }
   environment {

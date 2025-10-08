@@ -1,4 +1,4 @@
-podTemplate(podRetention: always(), containers: [
+podTemplate(containers: [
         containerTemplate(name: 'busybox', image: 'busybox', ttyEnabled: true, command: '/bin/cat'),
     ]) {
 

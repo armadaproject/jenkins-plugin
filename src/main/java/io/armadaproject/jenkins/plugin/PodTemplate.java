@@ -42,7 +42,6 @@ import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import io.armadaproject.jenkins.plugin.model.TemplateEnvVar;
-import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
 import io.armadaproject.jenkins.plugin.pod.yaml.YamlMergeStrategy;
 import io.armadaproject.jenkins.plugin.volumes.PodVolume;
 import io.armadaproject.jenkins.plugin.volumes.workspace.WorkspaceVolume;
@@ -110,8 +109,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
     private String inheritFrom;
 
     private String name;
-
-    private String namespace;
 
     private String image;
 
@@ -241,9 +238,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
     @CheckForNull
     private transient TaskListener listener;
 
-    @CheckForNull
-    private PodRetention podRetention;
-
     public PodTemplate() {
         this((String) null);
     }
@@ -317,15 +311,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
 
     public String getName() {
         return name;
-    }
-
-    public String getNamespace() {
-        return namespace;
-    }
-
-    @DataBoundSetter
-    public void setNamespace(String namespace) {
-        this.namespace = Util.fixEmptyAndTrim(namespace);
     }
 
     @Deprecated
@@ -902,22 +887,13 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
         }
     }
 
-    public PodRetention getPodRetention() {
-        return podRetention == null ? PodRetention.getPodTemplateDefault() : podRetention;
-    }
-
-    @DataBoundSetter
-    public void setPodRetention(PodRetention podRetention) {
-        this.podRetention = PodRetention.getPodTemplateDefault().equals(podRetention) ? null : podRetention;
-    }
-
-    /** @see KubernetesSlave#getRunListener */
+    /** @see ArmadaSlave#getRunListener */
     @NonNull
     public TaskListener getListener() {
         return listener == null ? TaskListener.NULL : listener;
     }
 
-    /** @see KubernetesSlave#getRunListener */
+    /** @see ArmadaSlave#getRunListener */
     @CheckForNull
     public TaskListener getListenerOrNull() {
         return listener;
@@ -990,7 +966,7 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
     }
 
     @Deprecated
-    public Pod build(KubernetesClient client, KubernetesSlave slave) {
+    public Pod build(KubernetesClient client, ArmadaSlave slave) {
         return build(slave);
     }
 
@@ -999,7 +975,7 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
      *
      * @param slave
      */
-    public Pod build(KubernetesSlave slave) {
+    public Pod build(ArmadaSlave slave) {
         return new PodTemplateBuilder(this, slave).build();
     }
 
@@ -1136,13 +1112,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
 
         @SuppressWarnings("unused") // Used by jelly
         @Restricted(DoNotUse.class) // Used by jelly
-        public Descriptor getDefaultPodRetention() {
-            return Jenkins.get()
-                    .getDescriptor(PodRetention.getPodTemplateDefault().getClass());
-        }
-
-        @SuppressWarnings("unused") // Used by jelly
-        @Restricted(DoNotUse.class) // Used by jelly
         public YamlMergeStrategy getDefaultYamlMergeStrategy() {
             return YamlMergeStrategy.defaultStrategy();
         }
@@ -1153,7 +1122,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
         return "PodTemplate{" + (id == null ? "" : "id='" + id + '\'')
                 + (inheritFrom == null ? "" : ", inheritFrom='" + inheritFrom + '\'')
                 + (name == null ? "" : ", name='" + name + '\'')
-                + (namespace == null ? "" : ", namespace='" + namespace + '\'')
                 + (image == null ? "" : ", image='" + image + '\'')
                 + (!privileged ? "" : ", privileged=" + privileged)
                 + (runAsUser == null ? "" : ", runAsUser=" + runAsUser)
@@ -1185,7 +1153,6 @@ public class PodTemplate extends AbstractDescribableImpl<PodTemplate> implements
                         ? ""
                         : ", resourceLimitEphemeralStorage='" + resourceLimitEphemeralStorage + '\'')
                 + (workspaceVolume == null ? "" : ", workspaceVolume='" + workspaceVolume + '\'')
-                + (podRetention == null ? "" : ", podRetention='" + podRetention + '\'')
                 + (volumes == null || volumes.isEmpty() ? "" : ", volumes=" + volumes)
                 + (containers == null || containers.isEmpty() ? "" : ", containers=" + containers)
                 + (envVars == null || envVars.isEmpty() ? "" : ", envVars=" + envVars)

@@ -17,7 +17,7 @@ public class StandardPlannedNodeBuilder extends PlannedNodeBuilder {
         CompletableFuture f;
         String displayName;
         try {
-            KubernetesSlave agent = KubernetesSlave.builder()
+            ArmadaSlave agent = ArmadaSlave.builder()
                     .podTemplate(t.isUnwrapped() ? t : cloud.getUnwrappedTemplate(t))
                     .cloud(cloud)
                     .build();

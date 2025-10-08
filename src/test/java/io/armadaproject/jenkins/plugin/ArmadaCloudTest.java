@@ -233,7 +233,7 @@ public class ArmadaCloudTest {
                 }
             }
         }
-        cloud.setServerCertificate("-----BEGIN CERTIFICATE-----");
+       // cloud.setServerCertificate("-----BEGIN CERTIFICATE-----");
         cloud.setTemplates(Collections.singletonList(pt));
         cloud.setPodRetention(new Always());
         cloud.setPodLabels(PodLabel.listOf("foo", "bar", "cat", "dog"));

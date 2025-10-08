@@ -1,4 +1,4 @@
-package io.armadaproject;
+package io.armadaproject.jenkins.plugin.job;
 
 import api.SubmitOuterClass.JobSubmitRequest;
 import api.SubmitOuterClass.JobSubmitRequest.Builder;

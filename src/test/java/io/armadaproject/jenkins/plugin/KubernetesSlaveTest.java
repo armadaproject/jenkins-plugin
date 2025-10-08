@@ -56,16 +56,16 @@ public class KubernetesSlaveTest {
         List<? extends PodVolume> volumes = Collections.emptyList();
         List<ContainerTemplate> containers = Collections.emptyList();
 
-        KubernetesTestUtil.assertRegex(KubernetesSlave.getSlaveName(new PodTemplate("image", volumes)), "^jenkins-agent-[0-9a-z]{5}$");
+        KubernetesTestUtil.assertRegex(ArmadaSlave.getSlaveName(new PodTemplate("image", volumes)), "^jenkins-agent-[0-9a-z]{5}$");
         KubernetesTestUtil.assertRegex(
-                KubernetesSlave.getSlaveName(new PodTemplate("", volumes, containers)), "^jenkins-agent-[0-9a-z]{5}$");
+                ArmadaSlave.getSlaveName(new PodTemplate("", volumes, containers)), "^jenkins-agent-[0-9a-z]{5}$");
         KubernetesTestUtil.assertRegex(
-                KubernetesSlave.getSlaveName(new PodTemplate("a name", volumes, containers)), ("^a-name-[0-9a-z]{5}$"));
+                ArmadaSlave.getSlaveName(new PodTemplate("a name", volumes, containers)), ("^a-name-[0-9a-z]{5}$"));
         KubernetesTestUtil.assertRegex(
-                KubernetesSlave.getSlaveName(new PodTemplate("an_other_name", volumes, containers)),
+                ArmadaSlave.getSlaveName(new PodTemplate("an_other_name", volumes, containers)),
                 ("^an-other-name-[0-9a-z]{5}$"));
         KubernetesTestUtil.assertRegex(
-                KubernetesSlave.getSlaveName(new PodTemplate("whatever...", volumes, containers)),
+                ArmadaSlave.getSlaveName(new PodTemplate("whatever...", volumes, containers)),
                 ("jenkins-agent-[0-9a-z]{5}"));
     }
 
@@ -89,7 +89,7 @@ public class KubernetesSlaveTest {
             r.jenkins.clouds.add(cloud);
             for (KubernetesSlaveTestCase<PodRetention> testCase : cases) {
                 cloud.setPodRetention(testCase.getCloudPodRetention());
-                KubernetesSlave testSlave = testCase.buildSubject(cloud);
+                ArmadaSlave testSlave = testCase.buildSubject(cloud);
                 assertEquals(testCase.getExpectedResult(), testSlave.getPodRetention(cloud));
             }
         } catch (IOException | Descriptor.FormException e) {
@@ -113,8 +113,8 @@ public class KubernetesSlaveTest {
         private String podPhase;
         private T expectedResult;
 
-        public KubernetesSlave buildSubject(ArmadaCloud cloud) throws IOException, Descriptor.FormException {
-            return new KubernetesSlave.Builder()
+        public ArmadaSlave buildSubject(ArmadaCloud cloud) throws IOException, Descriptor.FormException {
+            return new ArmadaSlave.Builder()
                     .cloud(cloud)
                     .podTemplate(podTemplate)
                     .build();

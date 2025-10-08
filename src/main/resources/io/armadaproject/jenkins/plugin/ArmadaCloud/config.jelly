@@ -21,7 +21,7 @@ THE SOFTWARE.
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
 
     <f:entry title="${%Name}" field="name">
-      <f:textbox default="kubernetes" clazz="required"/>
+      <f:textbox default="armada" clazz="required"/>
     </f:entry>
 
     <f:entry title="${%Armada URL}" field="armadaUrl">
@@ -29,7 +29,7 @@ THE SOFTWARE.
     </f:entry>
 
     <f:entry title="${%Armada port}" field="armadaPort">
-      <f:textbox default="30002" clazz="required"/>
+      <f:textbox default="443" clazz="required"/>
     </f:entry>
 
     <f:entry title="${%Armada queue}" field="armadaQueue">
@@ -49,7 +49,7 @@ THE SOFTWARE.
     </f:entry>
 
     <f:entry title="${%Armada Lookout port}" field="armadaLookoutPort">
-      <f:textbox default="30000"/>
+      <f:textbox default="443"/>
     </f:entry>
 
     <f:entry title="${%Armada job set prefix}" field="armadaJobSetPrefix">
@@ -62,24 +62,12 @@ THE SOFTWARE.
 
     <f:validateButton title="${%Test Armada Connection}" progress="${%Testing...}" method="testArmadaConnection" with="armadaUrl,armadaPort,armadaCredentialsId" />
 
-    <f:entry title="${%Kubernetes URL}" field="serverUrl">
-      <f:textbox/>
-    </f:entry>
-
     <f:entry title="${%Use Jenkins Proxy}" field="useJenkinsProxy">
       <f:checkbox/>
     </f:entry>
 
-    <f:entry title="${%Kubernetes server certificate key}" field="serverCertificate">
-      <f:textarea/>
-    </f:entry>
-
     <f:entry title="${%Disable https certificate check}" field="skipTlsVerify">
       <f:checkbox />
-    </f:entry>
-
-    <f:entry title="${%Kubernetes Namespace}" field="namespace">
-      <f:textbox/>
     </f:entry>
 
     <f:entry title="${%Agent Docker Registry}" field="jnlpregistry">
@@ -93,8 +81,6 @@ THE SOFTWARE.
     <f:entry title="${%Credentials}" field="credentialsId">
       <c:select/>
     </f:entry>
-
-    <f:validateButton title="${%Test Connection}" progress="${%Testing...}" method="testConnection" with="name,serverUrl,credentialsId,serverCertificate,skipTlsVerify,namespace,connectTimeout,readTimeout,useJenkinsProxy" />
 
     <f:entry title="${%WebSocket}" field="webSocket">
       <f:checkbox/>
@@ -129,11 +115,6 @@ THE SOFTWARE.
                                   deleteCaption="${%Delete Pod Label}" />
     </f:entry>
 
-    <f:advanced title="${%Pod Retention}">
-      <f:dropdownDescriptorSelector title="${%Pod Retention}" field="podRetention"
-          descriptors="${descriptor.allowedPodRetentions}" default="${descriptor.defaultPodRetention}" />
-    </f:advanced>
-
     <f:entry title="${%Max connections to Kubernetes API}" field="maxRequestsPerHostStr">
       <f:number default="32" checkMethod="post"/>
     </f:entry>
@@ -157,5 +138,4 @@ THE SOFTWARE.
     <f:entry title="${%Defaults Provider Template Name}" field="defaultsProviderTemplate">
       <f:textbox default=""/>
     </f:entry>
-    <f:optionalProperty field="garbageCollection" title="${%Enable garbage collection}"/>
 </j:jelly>

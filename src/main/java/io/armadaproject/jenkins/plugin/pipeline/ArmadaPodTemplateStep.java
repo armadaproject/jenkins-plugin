@@ -12,7 +12,6 @@ import io.armadaproject.jenkins.plugin.ContainerTemplate;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
 import io.armadaproject.jenkins.plugin.PodAnnotation;
 import io.armadaproject.jenkins.plugin.PodTemplate;
-import io.armadaproject.jenkins.plugin.pod.retention.PodRetention;
 import io.armadaproject.jenkins.plugin.pod.yaml.YamlMergeStrategy;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -91,9 +90,6 @@ public class ArmadaPodTemplateStep extends Step implements Serializable {
 
     @CheckForNull
     private Boolean inheritYamlMergeStrategy;
-
-    @CheckForNull
-    private PodRetention podRetention;
 
     private Boolean showRawYaml;
 
@@ -377,18 +373,6 @@ public class ArmadaPodTemplateStep extends Step implements Serializable {
         this.yaml = Util.fixEmpty(yaml);
     }
 
-    @CheckForNull
-    public PodRetention getPodRetention() {
-        return this.podRetention == null ? DescriptorImpl.defaultPodRetention : this.podRetention;
-    }
-
-    @DataBoundSetter
-    public void setPodRetention(@CheckForNull PodRetention podRetention) {
-        this.podRetention =
-                (podRetention == null || podRetention
-                    .equals(DescriptorImpl.defaultPodRetention)) ? null : podRetention;
-    }
-
     public boolean isInheritYamlMergeStrategy() {
         return Optional.ofNullable(inheritYamlMergeStrategy).orElse(false);
     }
@@ -453,7 +437,6 @@ public class ArmadaPodTemplateStep extends Step implements Serializable {
             "yaml",
             "showRawYaml",
             "instanceCap",
-            "podRetention",
             "supplementalGroups",
             "idleMinutes",
             "activeDeadlineSeconds",
@@ -535,7 +518,6 @@ public class ArmadaPodTemplateStep extends Step implements Serializable {
         }
 
         public static final Integer defaultInstanceCap = Integer.MAX_VALUE;
-        public static final PodRetention defaultPodRetention = PodRetention.getPodTemplateDefault();
         public static final WorkspaceVolume defaultWorkspaceVolume = WorkspaceVolume.getDefault();
         /** Only used for snippet generation. */
         public static final String defaultInheritFrom = "<default>";

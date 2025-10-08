@@ -202,7 +202,7 @@ public class KubernetesFactoryAdapter {
                 }
             }
         }
-        return new KubernetesClientBuilder().withConfig(builder.build()).build();
+        return new KubernetesClientBuilder().withConfig(builder.withHttp2Disable().build()).build();
     }
 
     /**

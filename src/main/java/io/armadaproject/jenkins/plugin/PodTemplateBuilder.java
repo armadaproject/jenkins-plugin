@@ -101,13 +101,13 @@ public class PodTemplateBuilder {
     private static final String WORKSPACE_VOLUME_NAME = "workspace-volume";
     public static final Pattern FROM_DIRECTIVE = Pattern.compile("^FROM (.*)$");
 
-    public static final String LABEL_KUBERNETES_CONTROLLER = "kubernetes.jenkins.io/controller";
+    public static final String LABEL_KUBERNETES_CONTROLLER = "armada.jenkins.io/controller";
     static final String NO_RECONNECT_AFTER_TIMEOUT =
             SystemProperties.getString(PodTemplateBuilder.class.getName() + ".noReconnectAfter", "1d");
     private static final String JENKINS_AGENT_FILE_ENVVAR = "JENKINS_AGENT_FILE";
     private static final String JENKINS_AGENT_AGENT_JAR = "/jenkins-agent/agent.jar";
     private static final String JENKINS_AGENT_LAUNCHER_SCRIPT_LOCATION = "/jenkins-agent/jenkins-agent";
-    public static final String ARMADA_LABEL = "kubernetes.jenkins.io/armada";
+    public static final String ARMADA_LABEL = "armada.jenkins.io/agentname";
 
     @SuppressFBWarnings(value = "MS_SHOULD_BE_FINAL", justification = "tests")
     @Restricted(NoExternalUse.class)
@@ -150,7 +150,7 @@ public class PodTemplateBuilder {
     private PodTemplate template;
 
     @CheckForNull
-    private KubernetesSlave agent;
+    private ArmadaSlave agent;
 
     @CheckForNull
     private ArmadaCloud cloud;
@@ -160,20 +160,20 @@ public class PodTemplateBuilder {
         this.template = template;
     }
 
-    public PodTemplateBuilder(PodTemplate template, KubernetesSlave agent) {
+    public PodTemplateBuilder(PodTemplate template, ArmadaSlave agent) {
         this.template = template;
         this.agent = agent;
-        this.cloud = agent.getKubernetesCloud();
+        this.cloud = agent.getArmadaCloud();
     }
 
-    public PodTemplateBuilder withSlave(@NonNull KubernetesSlave slave) {
+    public PodTemplateBuilder withSlave(@NonNull ArmadaSlave slave) {
         this.agent = slave;
-        this.cloud = slave.getKubernetesCloud();
+        this.cloud = slave.getArmadaCloud();
         return this;
     }
 
     @Deprecated
-    public Pod build(KubernetesSlave slave) {
+    public Pod build(ArmadaSlave slave) {
         LOGGER.log(Level.WARNING, "This method is deprecated and does nothing");
         return this.build();
     }
@@ -189,7 +189,7 @@ public class PodTemplateBuilder {
         if (agent == null) {
             throw new IllegalStateException("No KubernetesSlave is set");
         }
-        String podName = agent.getPodName();
+        String podName = agent.getAgentName();
         int i = 0;
         for (final PodVolume volume : template.getVolumes()) {
             final String volumeName = "volume-" + i;
@@ -235,7 +235,7 @@ public class PodTemplateBuilder {
 
         Map<String, String> labels = new HashMap<>();
         if (agent != null) {
-            labels.putAll(agent.getKubernetesCloud().getPodLabelsMap());
+            labels.putAll(agent.getArmadaCloud().getPodLabelsMap());
         }
         labels.putAll(template.getLabelsMap());
         if (!labels.isEmpty()) {
@@ -306,15 +306,6 @@ public class PodTemplateBuilder {
 
         // merge with the yaml fragments
         Pod pod = combine(template.getYamlsPod(), builder.endSpec().build());
-
-        // Apply defaults
-        if (pod.getMetadata().getNamespace() == null) {
-            if (template.getNamespace() != null) {
-                pod.getMetadata().setNamespace(template.getNamespace());
-            } else if (cloud != null && cloud.getNamespace() != null) {
-                pod.getMetadata().setNamespace(cloud.getNamespace());
-            }
-        }
 
         // default agent container
         String agentContainerName = StringUtils.defaultString(template.getAgentContainer(), JNLP_NAME);
@@ -440,7 +431,7 @@ public class PodTemplateBuilder {
     private Map<String, EnvVar> defaultEnvVars(Collection<TemplateEnvVar> globalEnvVars) {
         Map<String, String> env = new HashMap<>();
         if (agent != null) {
-            ArmadaCloud cloud = agent.getKubernetesCloud();
+            ArmadaCloud cloud = agent.getArmadaCloud();
             if (cloud.isAddMasterProxyEnvVars()) {
                 // see if the env vars for proxy that the remoting.jar looks for
                 // are set on the controller, and if so, propagate them to the agent
@@ -489,7 +480,7 @@ public class PodTemplateBuilder {
 
             env.put("JENKINS_AGENT_WORKDIR", workingDir);
 
-            ArmadaCloud cloud = agent.getKubernetesCloud();
+            ArmadaCloud cloud = agent.getArmadaCloud();
 
             if (!StringUtils.isBlank(cloud.getJenkinsTunnel())) {
                 env.put("JENKINS_TUNNEL", cloud.getJenkinsTunnel());
@@ -687,7 +678,6 @@ public class PodTemplateBuilder {
                 builder.put(podAnnotation.getKey(), substituteEnv(podAnnotation.getValue()));
             }
         }
-        builder.put(GarbageCollection.ANNOTATION_LAST_REFRESH, String.valueOf(System.currentTimeMillis()));
         return Collections.unmodifiableMap(builder);
     }
 

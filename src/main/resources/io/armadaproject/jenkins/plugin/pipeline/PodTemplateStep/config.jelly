@@ -10,10 +10,6 @@
     <f:textbox/>
   </f:entry>
 
-  <f:entry field="namespace" title="${%Namespace}">
-    <f:textbox/>
-  </f:entry>
-
   <f:entry field="label" title="${%Label}">
     <f:textbox/>
   </f:entry>
@@ -65,9 +61,6 @@
   <f:advanced>
         <f:entry field="instanceCap" title="${%Maximum number of instances}">
           <f:textbox default="0"/>
-        </f:entry>
-        <f:entry title="${%Pod Retention}">
-          <f:dropdownDescriptorSelector field="podRetention" default="${descriptor.defaultPodRetention}"/>
         </f:entry>
         <f:entry field="supplementalGroups" title="${%Supplemental Groups}">
           <f:textbox/>

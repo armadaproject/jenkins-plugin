@@ -26,7 +26,7 @@ spec:
       stage('Run') {
         container('busybox') {
             sh '''set +x
-            ## durable-task plugin generates a script.sh file.
+            ## durable-item plugin generates a script.sh file.
             ##
             echo "script file: $(find ../../.. -iname script.sh))"
             echo "script file contents: $(find ../../.. -iname script.sh -exec cat {} \\;)"

@@ -6,7 +6,7 @@ import static org.junit.Assert.assertNotNull;
 
 import java.util.HashMap;
 import java.util.Map;
-import io.armadaproject.jenkins.plugin.KubernetesComputer;
+import io.armadaproject.jenkins.plugin.ArmadaComputer;
 import org.jenkinsci.plugins.workflow.test.steps.SemaphoreStep;
 import org.junit.Test;
 
@@ -21,7 +21,7 @@ public class KubernetesPipelineOverridenNamespaceTest extends AbstractKubernetes
 
         assertNotNull(createJobThenScheduleRun());
         SemaphoreStep.waitForStart("pod/1", b);
-        for (KubernetesComputer c : getKubernetesComputers()) {
+        for (ArmadaComputer c : getKubernetesComputers()) {
             assertEquals(
                     overriddenNamespace,
                     c.getNode().getPod().get().getMetadata().getNamespace());
@@ -47,7 +47,7 @@ public class KubernetesPipelineOverridenNamespaceTest extends AbstractKubernetes
         env.put("OVERRIDDEN_NAMESPACE", stepNamespace);
         assertNotNull(createJobThenScheduleRun(env));
         SemaphoreStep.waitForStart("pod/1", b);
-        for (KubernetesComputer c : getKubernetesComputers()) {
+        for (ArmadaComputer c : getKubernetesComputers()) {
             assertEquals(stepNamespace, c.getNode().getPod().get().getMetadata().getNamespace());
         }
         SemaphoreStep.success("pod/1", null);

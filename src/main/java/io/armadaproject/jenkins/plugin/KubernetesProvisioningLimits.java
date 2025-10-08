@@ -45,8 +45,8 @@ public final class KubernetesProvisioningLimits {
         if (!init) {
             Queue.withLock(() -> {
                 Jenkins.get().getNodes().stream()
-                        .filter(KubernetesSlave.class::isInstance)
-                        .map(KubernetesSlave.class::cast)
+                        .filter(ArmadaSlave.class::isInstance)
+                        .map(ArmadaSlave.class::cast)
                         .forEach(node -> {
                             cloudCounts.put(
                                     node.getCloudName(), getGlobalCount(node.getCloudName()) + node.getNumExecutors());
@@ -161,12 +161,12 @@ public final class KubernetesProvisioningLimits {
     public static class NodeListenerImpl extends NodeListener {
         @Override
         protected void onDeleted(@NonNull Node node) {
-            if (node instanceof KubernetesSlave) {
+            if (node instanceof ArmadaSlave) {
                 KubernetesProvisioningLimits instance = KubernetesProvisioningLimits.get();
-                KubernetesSlave kubernetesNode = (KubernetesSlave) node;
+                ArmadaSlave kubernetesNode = (ArmadaSlave) node;
                 PodTemplate template = kubernetesNode.getTemplateOrNull();
                 if (template != null) {
-                    instance.unregister(kubernetesNode.getKubernetesCloud(), template, node.getNumExecutors());
+                    instance.unregister(kubernetesNode.getArmadaCloud(), template, node.getNumExecutors());
                 }
             }
         }

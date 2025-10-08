@@ -25,7 +25,7 @@ import hudson.model.Node;
 import hudson.model.TaskListener;
 import hudson.model.labels.LabelAtom;
 import io.armadaproject.jenkins.plugin.ArmadaCloud;
-import io.armadaproject.jenkins.plugin.KubernetesSlave;
+import io.armadaproject.jenkins.plugin.ArmadaSlave;
 import java.io.IOException;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -46,7 +46,7 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
 /**
- * Qualifies {@code node} blocks associated with {@link KubernetesSlave} to be retried if the node was deleted.
+ * Qualifies {@code node} blocks associated with {@link ArmadaSlave} to be retried if the node was deleted.
  * A more specific version of {@link AgentErrorCondition}.
  */
 @SuppressFBWarnings(
@@ -106,7 +106,7 @@ public class KubernetesAgentErrorCondition extends ErrorCondition {
                 String node = ws.getNode();
                 Node n = Jenkins.get().getNode(node);
                 if (n != null) {
-                    if (!(n instanceof KubernetesSlave)) {
+                    if (!(n instanceof ArmadaSlave)) {
                         if (!handleNonKubernetes) {
                             listener.getLogger().println(node + " was not a Kubernetes agent");
                         }
