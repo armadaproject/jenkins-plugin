@@ -1,0 +1,67 @@
+pipeline {
+  agent {
+    armada {
+      yaml '''
+        apiVersion: v1
+        kind: Pod
+        spec:
+          containers:
+          - name: maven
+            image: maven:3.9.9-eclipse-temurin-17
+            command:
+            - cat
+            tty: true
+            volumeMounts:
+            - mountPath: /mnt/ffs
+              mountPropagation: HostToContainer
+              name: ffs
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "500m"
+              limits:
+                memory: "256Mi"
+                cpu: "500m"
+          - name: busybox
+            image: busybox
+            command:
+            - cat
+            tty: true
+            volumeMounts:
+            - mountPath: /mnt/ffs
+              mountPropagation: HostToContainer
+              name: ffs
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "500m"
+              limits:
+                memory: "256Mi"
+                cpu: "500m"
+          volumes:
+          - name: ffs
+            csi:
+              driver: hostpath.csi.k8s.io
+              volumeAttributes:
+                mountTargets: "uat"
+                readWriteShares: "RtTest"
+                automount: "true"
+        '''
+    }
+  }
+  stages {
+    stage('Run maven') {
+      steps {
+        armadaContainer('maven') {
+          sh 'mvn -version'
+          sh 'echo "written by maven" > /mnt/ffs/proof.txt'
+          sh 'ls -la /mnt/ffs'
+        }
+        armadaContainer('busybox') {
+          sh '/bin/busybox'
+          sh 'cat /mnt/ffs/proof.txt'
+        }
+      }
+    }
+  }
+}

@@ -168,7 +168,7 @@ public class ArmadaPluginConfig {
   /**
    * Timeout in seconds for waiting for Armada JobRunningEvent
    */
-  public static final int EVENT_WAIT_TIMEOUT_SECONDS = 60;
+  public static final int EVENT_WAIT_TIMEOUT_SECONDS = 180;
   /**
    * Default Kubernetes namespace
    */

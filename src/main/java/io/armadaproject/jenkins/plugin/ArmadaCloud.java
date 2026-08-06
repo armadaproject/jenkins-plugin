@@ -12,6 +12,7 @@ import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import hudson.Extension;
 import hudson.Util;
 import hudson.model.Descriptor;
+import hudson.model.Label;
 import hudson.model.Node;
 import hudson.security.ACL;
 import hudson.slaves.Cloud;
@@ -117,10 +118,10 @@ public class ArmadaCloud extends Cloud {
       dynamicTemplates = new ConcurrentHashMap<>();
     }
     if (armadaEventManager == null) {
-      armadaEventManager = new ArmadaEventManager<>();
+      armadaEventManager = new ArmadaEventManager<>(JobRunningEvent::getJobId);
     }
     if (armadaPendingEventManager == null) {
-      armadaPendingEventManager = new ArmadaEventManager<>();
+      armadaPendingEventManager = new ArmadaEventManager<>(JobPendingEvent::getJobId);
     }
     if (jobSetIdThreads == null) {
       jobSetIdThreads = new ConcurrentHashMap<>();
@@ -298,10 +299,11 @@ public class ArmadaCloud extends Cloud {
    */
   @Override
   public boolean canProvision(CloudState state) {
-    String label = state.getLabel() != null ? state.getLabel().toString() : null;
-    if (label == null) {
+    Label stateLabel = state.getLabel();
+    if (stateLabel == null) {
       return false;
     }
+    String label = stateLabel.toString();
     // Check if we have a dynamic template for this label
     return dynamicTemplates.containsKey(label);
   }
@@ -311,11 +313,12 @@ public class ArmadaCloud extends Cloud {
     // Validate configuration before attempting to provision
     validateConfiguration();
 
-    String label = state.getLabel() != null ? state.getLabel().toString() : null;
-    if (label == null) {
+    Label stateLabel = state.getLabel();
+    if (stateLabel == null) {
       LOGGER.log(Level.WARNING, "No label provided for provisioning");
       return new ArrayList<>();
     }
+    String label = stateLabel.toString();
 
     // Look up the dynamic template for this label
     ArmadaJobTemplate template = dynamicTemplates.get(label);
@@ -421,7 +424,7 @@ public class ArmadaCloud extends Cloud {
    */
   public ArmadaEventManager<JobRunningEvent> getArmadaEventManager() {
     if (armadaEventManager == null) {
-      armadaEventManager = new ArmadaEventManager<>();
+      armadaEventManager = new ArmadaEventManager<>(JobRunningEvent::getJobId);
     }
     return armadaEventManager;
   }
@@ -433,7 +436,7 @@ public class ArmadaCloud extends Cloud {
    */
   public ArmadaEventManager<JobPendingEvent> getArmadaPendingEventManager() {
     if (armadaPendingEventManager == null) {
-      armadaPendingEventManager = new ArmadaEventManager<>();
+      armadaPendingEventManager = new ArmadaEventManager<>(JobPendingEvent::getJobId);
     }
     return armadaPendingEventManager;
   }
@@ -450,7 +453,8 @@ public class ArmadaCloud extends Cloud {
 
   /**
    * Starts watching Armada events for the specified job set ID. Creates a background thread that
-   * streams events from Armada and publishes them to subscribers.
+   * streams events from Armada and publishes them to subscribers. The caller owns the returned
+   * thread and is responsible for registering it in {@link #getJobSetIdThreads()}.
    *
    * @param jobSetId the job set ID to watch
    * @return the thread watching the events
@@ -506,7 +510,6 @@ public class ArmadaCloud extends Cloud {
     Thread watcher = new Thread(job);
     watcher.setName("armada-event-watcher-" + jobSetId);
     watcher.setDaemon(true);
-    getJobSetIdThreads().put(jobSetId, watcher);
     watcher.start();
     return watcher;
   }

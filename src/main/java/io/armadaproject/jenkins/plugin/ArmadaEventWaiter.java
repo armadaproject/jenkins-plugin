@@ -44,9 +44,9 @@ public class ArmadaEventWaiter {
 
     eventManager.subscribe(jobSetId, consumer);
 
-    // Start watching events if not already started
-    cloud.getJobSetIdThreads().putIfAbsent(jobSetId,
-        cloud.startWatchingArmadaEvents(jobSetId));
+    // Start watching events if not already started. computeIfAbsent, not putIfAbsent: the latter
+    // evaluates its argument eagerly and would start a watcher thread on every call.
+    cloud.getJobSetIdThreads().computeIfAbsent(jobSetId, cloud::startWatchingArmadaEvents);
 
     try {
       LOGGER.fine("Waiting for JobRunningEvent for job: " + jobId + " in job set: " + jobSetId);

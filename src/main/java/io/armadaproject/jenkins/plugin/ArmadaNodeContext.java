@@ -1,6 +1,7 @@
 package io.armadaproject.jenkins.plugin;
 
 import api.EventOuterClass.JobRunningEvent;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.AbortException;
 import hudson.model.Node;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -23,6 +24,9 @@ public class ArmadaNodeContext implements Serializable, AutoCloseable {
   private static final Logger LOGGER = Logger.getLogger(ArmadaNodeContext.class.getName());
   private final String cloudName;
   private final String nodeName;
+  @SuppressFBWarnings(value = "SE_TRANSIENT_FIELD_NOT_RESTORED",
+      justification = "A StepContext cannot be restored; resolveArmadaSlave() falls back to the "
+          + "Jenkins node registry when context is null after deserialization")
   private transient StepContext context;
   private transient KubernetesClient client;
   private String podName;

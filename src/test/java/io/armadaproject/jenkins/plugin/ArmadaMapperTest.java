@@ -223,9 +223,8 @@ class ArmadaMapperTest {
   }
 
   static Stream<Arguments> provideVolumeSourceInputs() {
-    io.fabric8.kubernetes.api.model.Volume emptyInput = new io.fabric8.kubernetes.api.model.Volume();
-    Generated.VolumeSource expectedEmptyOutput = Generated.VolumeSource.newBuilder().build();
-
+    // A volume with no source at all is rejected, not mapped to an empty source; see
+    // ArmadaMapperVolumeSourceTest#unmappableVolumeSourceFailsSubmission.
     io.fabric8.kubernetes.api.model.Volume emptyDirInput = new io.fabric8.kubernetes.api.model.Volume();
     io.fabric8.kubernetes.api.model.EmptyDirVolumeSource emptyDir = new io.fabric8.kubernetes.api.model.EmptyDirVolumeSource();
     emptyDir.setMedium("Memory");
@@ -254,7 +253,6 @@ class ArmadaMapperTest {
         .build();
 
     return Stream.of(
-        Arguments.of(emptyInput, expectedEmptyOutput),
         Arguments.of(emptyDirInput, expectedEmptyDirOutput),
         Arguments.of(secretInput, expectedSecretOutput),
         Arguments.of(fullInput, expectedFullOutput)
@@ -264,14 +262,6 @@ class ArmadaMapperTest {
   static Stream<Arguments> provideVolumesInputs() {
     List<io.fabric8.kubernetes.api.model.Volume> emptyInput = List.of();
     List<Generated.Volume> expectedEmptyOutput = List.of();
-
-    io.fabric8.kubernetes.api.model.Volume nameOnlyInput = new io.fabric8.kubernetes.api.model.Volume();
-    nameOnlyInput.setName("my-volume");
-
-    Generated.Volume expectedNameOnlyOutput = Generated.Volume.newBuilder()
-        .setName("my-volume")
-        .setVolumeSource(Generated.VolumeSource.newBuilder().build())
-        .build();
 
     io.fabric8.kubernetes.api.model.Volume volumeSourceOnlyInput = new io.fabric8.kubernetes.api.model.Volume();
     io.fabric8.kubernetes.api.model.EmptyDirVolumeSource emptyDir = new io.fabric8.kubernetes.api.model.EmptyDirVolumeSource();
@@ -297,7 +287,6 @@ class ArmadaMapperTest {
 
     return Stream.of(
         Arguments.of(emptyInput, expectedEmptyOutput),
-        Arguments.of(List.of(nameOnlyInput), List.of(expectedNameOnlyOutput)),
         Arguments.of(List.of(volumeSourceOnlyInput), List.of(expectedVolumeSourceOnlyOutput)),
         Arguments.of(List.of(fullInput), List.of(expectedFullOutput))
     );
@@ -3714,12 +3703,17 @@ class ArmadaMapperTest {
 
     Pod podWithVolumes = new Pod();
     PodSpec podSpecWithVolumes = new PodSpec();
-    podSpecWithVolumes.setVolumes(List.of(new io.fabric8.kubernetes.api.model.Volume()));
+    // The volume needs a source: one the mapper cannot translate fails the submission outright.
+    io.fabric8.kubernetes.api.model.Volume volume = new io.fabric8.kubernetes.api.model.Volume();
+    volume.setEmptyDir(new io.fabric8.kubernetes.api.model.EmptyDirVolumeSource());
+    podSpecWithVolumes.setVolumes(List.of(volume));
     podWithVolumes.setSpec(podSpecWithVolumes);
 
     Generated.PodSpec expectedPodSpecWithVolumes = Generated.PodSpec.newBuilder()
         .addAllVolumes(List.of(Generated.Volume.newBuilder()
-            .setVolumeSource(Generated.VolumeSource.newBuilder().build())
+            .setVolumeSource(Generated.VolumeSource.newBuilder()
+                .setEmptyDir(Generated.EmptyDirVolumeSource.newBuilder().build())
+                .build())
             .build()))
         .build();
 
