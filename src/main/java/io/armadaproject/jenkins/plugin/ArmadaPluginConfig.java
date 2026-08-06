@@ -80,6 +80,20 @@ public class ArmadaPluginConfig {
    */
   public static final String JENKINS_SECRET_ENV = "JENKINS_SECRET";
   /**
+   * Suffix appended to the agent name to form the per-agent JNLP Secret name.
+   */
+  public static final String JNLP_SECRET_NAME_SUFFIX = "-jnlp-secret";
+  /**
+   * Timeout in seconds for the executor-cluster Pod object to appear with a UID after Armada
+   * has reported JobPending. Once pending fires the Pod is created on the executor cluster
+   * almost immediately, so this is intentionally much shorter than EVENT_WAIT_TIMEOUT_SECONDS.
+   */
+  public static final int POD_UID_WAIT_TIMEOUT_SECONDS = 30;
+  /**
+   * Key under which the JNLP HMAC is stored inside the per-agent Secret.
+   */
+  public static final String JNLP_SECRET_KEY = "jenkins-secret";
+  /**
    * Jenkins name environment variable
    */
   public static final String JENKINS_NAME_ENV = "JENKINS_NAME";

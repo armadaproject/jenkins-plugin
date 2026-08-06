@@ -1,5 +1,6 @@
 package io.armadaproject.jenkins.plugin;
 
+import api.EventOuterClass.JobPendingEvent;
 import api.Job.JobStatusRequest;
 import api.Job.JobStatusResponse;
 import api.SubmitOuterClass.JobState;
@@ -9,7 +10,12 @@ import hudson.model.TaskListener;
 import hudson.slaves.JNLPLauncher;
 import hudson.slaves.SlaveComputer;
 import io.armadaproject.ArmadaClient;
+import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.SecretBuilder;
+import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -18,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionTimeoutException;
 
 public class ArmadaLauncher extends JNLPLauncher {
 
@@ -94,13 +101,35 @@ public class ArmadaLauncher extends JNLPLauncher {
       logArmadaConfiguration(cloud, listener);
 
       try (ArmadaClient armadaClient = cloud.createArmadaClient()) {
-        String jobSetId = generateAndSetJobSetId(cloud, listener);
+        // On recovery, the prior launch's jobSetId is persisted on the computer and is the only
+        // one the surviving Armada job lives under; generating a fresh one would point the
+        // pending-event subscription at an empty job set.
+        boolean recovering = computer.getArmadaJobId() != null
+            && !computer.getArmadaJobId().isEmpty()
+            && computer.getArmadaJobSetId() != null
+            && !computer.getArmadaJobSetId().isEmpty();
+        String jobSetId = recovering
+            ? computer.getArmadaJobSetId()
+            : generateAndSetJobSetId(cloud, listener);
 
-        if (handleExistingJob(armadaClient, computer, listener)) {
-          return;
+        // Subscribe to pending events BEFORE submitting so the event manager (which has no
+        // replay) cannot drop a fast-arriving pending between submit and subscribe. The recovery
+        // path runs through the same flow so a crashed prior launch (job submitted, Secret never
+        // created) can still finish provisioning; createJnlpSecret tolerates an existing Secret.
+        try (PendingEventSubscription pendingSub =
+            PendingEventSubscription.start(cloud, jobSetId)) {
+          if (!handleExistingJob(armadaClient, computer, listener)) {
+            submitNewJob(armadaClient, cloud, computer, podSpec, jobSetId, listener);
+          }
+
+          // Create the per-agent JNLP Secret on the executor cluster before waiting for the
+          // job to reach RUNNING. The kubelet retries unresolved secretKeyRef env on backoff,
+          // so the jnlp container would otherwise block in CreateContainerConfigError forever
+          // and the Armada job would never transition to RUNNING.
+          provisionJnlpSecret(cloud, computer, pendingSub, listener);
         }
 
-        submitNewJob(armadaClient, cloud, computer, podSpec, jobSetId, listener);
+        waitForJobRunning(armadaClient, computer, listener);
       }
     } catch (IOException e) {
       throw e;
@@ -176,7 +205,6 @@ public class ArmadaLauncher extends JNLPLauncher {
     if (existingJobState != JobState.UNKNOWN) {
       listener.getLogger().println("Job already exists: " + computer.getArmadaJobId());
       computer.setLaunching(true);
-      waitForJobRunning(armadaClient, computer, listener);
       return true;
     }
 
@@ -199,8 +227,6 @@ public class ArmadaLauncher extends JNLPLauncher {
 
     listener.getLogger().println("Job submitted successfully with id: " + jobId);
     logLookoutUrl(cloud, jobId, listener);
-
-    waitForJobRunning(armadaClient, computer, listener);
   }
 
   /**
@@ -312,6 +338,99 @@ public class ArmadaLauncher extends JNLPLauncher {
       listener.error("Job failed to reach RUNNING state: " + e.getMessage()).close();
       throw new IOException("Job did not start successfully: " + jobId, e);
     }
+  }
+
+  /**
+   * Awaits the JobPendingEvent (the earliest event carrying clusterId/podName/podNamespace)
+   * via the pre-attached subscription, then creates the per-agent JNLP Secret on the executor
+   * cluster, owned by the pod so it is garbage-collected with it. Must run before
+   * waitForJobRunning because the jnlp container cannot start (and the job cannot reach RUNNING)
+   * until this Secret exists.
+   */
+  private void provisionJnlpSecret(ArmadaCloud cloud, ArmadaComputer computer,
+      PendingEventSubscription pendingSub, TaskListener listener) throws IOException {
+    String jobId = computer.getArmadaJobId();
+
+    listener.getLogger().println("Waiting for pending event to provision JNLP Secret...");
+    JobPendingEvent event = pendingSub.awaitFor(jobId);
+    String serverUrl = ArmadaNodeContext.resolveServerUrl(cloud, event.getClusterId());
+    String namespace = event.getPodNamespace();
+    String podName = event.getPodName();
+    String secretName = computer.getName() + ArmadaPluginConfig.JNLP_SECRET_NAME_SUFFIX;
+
+    try (KubernetesClient client = cloud.connect(serverUrl, namespace)) {
+      Pod pod = awaitPodWithUid(client, namespace, podName);
+      createJnlpSecret(client, pod, computer.getJnlpMac(), secretName);
+      listener.getLogger().println("JNLP Secret created: " + namespace + "/" + secretName);
+    }
+  }
+
+  /**
+   * Polls until the Pod object exists on the executor cluster and has a non-null UID. The Pod's
+   * UID is required to set a controller ownerReference on the Secret (so it is garbage-collected
+   * with the Pod). JobPending in Armada means the job has been assigned to a cluster, but the
+   * Pod object on that cluster may not be visible to the API server yet.
+   */
+  private static Pod awaitPodWithUid(KubernetesClient client, String namespace, String podName)
+      throws IOException {
+    try {
+      return Awaitility.await()
+          .atMost(ArmadaPluginConfig.POD_UID_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+          .pollInterval(ArmadaPluginConfig.POLL_INTERVAL_SECONDS, TimeUnit.SECONDS)
+          .until(() -> client.pods().inNamespace(namespace).withName(podName).get(),
+              pod -> pod != null && pod.getMetadata() != null
+                  && pod.getMetadata().getUid() != null);
+    } catch (ConditionTimeoutException e) {
+      throw new IOException("Timed out waiting for pod " + namespace + "/" + podName
+          + " to appear on the executor cluster", e);
+    }
+  }
+
+  /**
+   * Creates a per-agent Kubernetes Secret holding the JNLP HMAC, owned by the Pod so it is
+   * garbage-collected with it. The Secret is referenced by the jnlp container via secretKeyRef
+   * (see PodEnricher), so the value never appears in the PodSpec.
+   */
+  private static void createJnlpSecret(KubernetesClient client, Pod pod, String jnlpMac,
+      String secretName) {
+    Secret secret = buildJnlpSecret(pod, jnlpMac, secretName);
+    String namespace = secret.getMetadata().getNamespace();
+    try {
+      client.secrets().inNamespace(namespace).create(secret);
+      LOGGER.fine(() -> "Created JNLP Secret: " + namespace + "/" + secretName);
+    } catch (KubernetesClientException e) {
+      if (e.getCode() == 409) {
+        // Defensive: an orphaned Secret can exist if a prior launch attempt crashed between
+        // create-Secret and create-Pod. The JNLP mac is deterministic per agent identity, so
+        // reusing the existing Secret is safe.
+        LOGGER.fine(() -> "JNLP Secret already exists, reusing: " + namespace + "/" + secretName);
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  /**
+   * Builds the Secret object referenced by the jnlp container's secretKeyRef. Extracted as a
+   * pure function for testability — the result is what actually carries the JNLP HMAC.
+   */
+  static Secret buildJnlpSecret(Pod pod, String jnlpMac, String secretName) {
+    return new SecretBuilder()
+        .withNewMetadata()
+        .withName(secretName)
+        .withNamespace(pod.getMetadata().getNamespace())
+        .addToOwnerReferences(new OwnerReferenceBuilder()
+            .withApiVersion("v1")
+            .withKind("Pod")
+            .withName(pod.getMetadata().getName())
+            .withUid(pod.getMetadata().getUid())
+            .withController(true)
+            .withBlockOwnerDeletion(true)
+            .build())
+        .endMetadata()
+        .withType("Opaque")
+        .addToStringData(ArmadaPluginConfig.JNLP_SECRET_KEY, jnlpMac)
+        .build();
   }
 
   /**

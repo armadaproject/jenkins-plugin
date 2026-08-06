@@ -59,7 +59,6 @@ public class ArmadaNodeContext implements Serializable, AutoCloseable {
       String jobId = validateAndGetJobId(computer);
       String jobSetId = validateAndGetJobSetId(computer);
 
-      // Use ArmadaEventWaiter to wait for job running event
       ArmadaEventWaiter eventWaiter = new ArmadaEventWaiter(armadaCloud);
       JobRunningEvent event = eventWaiter.waitForJobRunning(jobId, jobSetId);
 
@@ -75,6 +74,30 @@ public class ArmadaNodeContext implements Serializable, AutoCloseable {
       Thread.currentThread().interrupt();
       throw new IOException("Interrupted while connecting to cloud", e);
     }
+  }
+
+  /**
+   * Resolves the Kubernetes server URL for the given cluster ID. Package-private static so
+   * {@link ArmadaLauncher} can resolve the URL from a {@link JobRunningEvent}/{@code
+   * JobPendingEvent} without holding a {@link StepContext}.
+   */
+  static String resolveServerUrl(ArmadaCloud armadaCloud, String clusterId) throws IOException {
+    String serverUrl;
+    try {
+      serverUrl = ClusterConfigParser.parse(armadaCloud.getArmadaClusterConfigPath())
+          .get(clusterId);
+    } catch (IOException e) {
+      throw e;
+    } catch (Exception ex) {
+      throw new IOException(String.format("Cluster configuration error at '%s': Failed to parse cluster config file",
+          armadaCloud.getArmadaClusterConfigPath()), ex);
+    }
+
+    if (serverUrl == null || serverUrl.isEmpty()) {
+      throw new IOException(String.format("Cluster configuration error at '%s': No server URL found for cluster: %s",
+          armadaCloud.getArmadaClusterConfigPath(), clusterId));
+    }
+    return serverUrl;
   }
 
   /**
@@ -126,28 +149,6 @@ public class ArmadaNodeContext implements Serializable, AutoCloseable {
           jobSetId, nodeName));
     }
     return jobSetId;
-  }
-
-  /**
-   * Resolves the Kubernetes server URL for the given cluster ID.
-   */
-  private String resolveServerUrl(ArmadaCloud armadaCloud, String clusterId) throws IOException {
-    try {
-      String serverUrl = ClusterConfigParser.parse(armadaCloud.getArmadaClusterConfigPath())
-          .get(clusterId);
-
-      if (serverUrl == null || serverUrl.isEmpty()) {
-        throw new IOException(String.format("Cluster configuration error at '%s': No server URL found for cluster: %s",
-            armadaCloud.getArmadaClusterConfigPath(), clusterId));
-      }
-
-      return serverUrl;
-    } catch (IOException e) {
-      throw e; // Re-throw IOException as-is
-    } catch (Exception ex) {
-      throw new IOException(String.format("Cluster configuration error at '%s': Failed to parse cluster config file",
-          armadaCloud.getArmadaClusterConfigPath()), ex);
-    }
   }
 
   private ArmadaSlave getArmadaSlave() throws IOException, InterruptedException {

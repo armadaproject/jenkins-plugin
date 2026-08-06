@@ -2,6 +2,7 @@ package io.armadaproject.jenkins.plugin;
 
 import api.EventOuterClass.EventMessage;
 import api.EventOuterClass.EventStreamMessage;
+import api.EventOuterClass.JobPendingEvent;
 import api.EventOuterClass.JobRunningEvent;
 import api.EventOuterClass.JobSetRequest;
 import api.Health.HealthCheckResponse.ServingStatus;
@@ -47,6 +48,7 @@ public class ArmadaCloud extends Cloud {
 
   private transient Map<String, ArmadaJobTemplate> dynamicTemplates = new ConcurrentHashMap<>();
   private transient ArmadaEventManager<JobRunningEvent> armadaEventManager;
+  private transient ArmadaEventManager<JobPendingEvent> armadaPendingEventManager;
   private transient ConcurrentHashMap<String, Thread> jobSetIdThreads;
 
   private String armadaUrl;
@@ -116,6 +118,9 @@ public class ArmadaCloud extends Cloud {
     }
     if (armadaEventManager == null) {
       armadaEventManager = new ArmadaEventManager<>();
+    }
+    if (armadaPendingEventManager == null) {
+      armadaPendingEventManager = new ArmadaEventManager<>();
     }
     if (jobSetIdThreads == null) {
       jobSetIdThreads = new ConcurrentHashMap<>();
@@ -422,6 +427,18 @@ public class ArmadaCloud extends Cloud {
   }
 
   /**
+   * Gets the JobPendingEvent manager, creating it lazily if needed. The pending event is the
+   * earliest event that carries clusterId/podName/podNamespace, used to create per-agent JNLP
+   * Secrets before the kubelet needs them.
+   */
+  public ArmadaEventManager<JobPendingEvent> getArmadaPendingEventManager() {
+    if (armadaPendingEventManager == null) {
+      armadaPendingEventManager = new ArmadaEventManager<>();
+    }
+    return armadaPendingEventManager;
+  }
+
+  /**
    * Gets the job set threads map, creating it lazily if needed.
    */
   public ConcurrentHashMap<String, Thread> getJobSetIdThreads() {
@@ -457,6 +474,10 @@ public class ArmadaCloud extends Cloud {
             }
 
             EventMessage message = value.getMessage();
+            if (message.hasPending()) {
+              getArmadaPendingEventManager().publish(jobSetId, message.getPending());
+              return;
+            }
             if (!message.hasRunning()) {
               return;
             }

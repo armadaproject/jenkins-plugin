@@ -4,10 +4,13 @@ import hudson.slaves.SlaveComputer;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.ContainerBuilder;
 import io.fabric8.kubernetes.api.model.EnvVar;
+import io.fabric8.kubernetes.api.model.EnvVarBuilder;
+import io.fabric8.kubernetes.api.model.EnvVarSourceBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodBuilder;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder;
+import io.fabric8.kubernetes.api.model.SecretKeySelectorBuilder;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeBuilder;
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder;
@@ -195,9 +198,10 @@ public class PodEnricher {
 
     SlaveComputer computer = slave.getComputer();
     if (computer != null) {
-      // Critical: JNLP MAC secret for authentication
-      envVars.put(ArmadaPluginConfig.JENKINS_SECRET_ENV,
-          new EnvVar(ArmadaPluginConfig.JENKINS_SECRET_ENV, computer.getJnlpMac(), null));
+      // JENKINS_SECRET is sourced from a per-agent Kubernetes Secret created by
+      // ArmadaLauncher after the pod is scheduled, so the HMAC never appears in the
+      // submitted PodSpec where anyone with `get pods` could read it.
+      envVars.put(ArmadaPluginConfig.JENKINS_SECRET_ENV, buildJnlpSecretEnvVar(computer.getName()));
 
       // Agent name (backwards compat)
       envVars.put(ArmadaPluginConfig.JENKINS_NAME_ENV,
@@ -230,5 +234,23 @@ public class PodEnricher {
             "-noReconnectAfter " + ArmadaPluginConfig.NO_RECONNECT_AFTER_TIMEOUT, null));
 
     return envVars;
+  }
+
+  /**
+   * Builds an EnvVar that resolves JENKINS_SECRET from the per-agent Kubernetes Secret
+   * (created by ArmadaLauncher post-schedule). The kubelet retries env resolution on backoff,
+   * so the pod can be submitted before the Secret exists.
+   */
+  static EnvVar buildJnlpSecretEnvVar(String agentName) {
+    return new EnvVarBuilder()
+        .withName(ArmadaPluginConfig.JENKINS_SECRET_ENV)
+        .withValueFrom(new EnvVarSourceBuilder()
+            .withSecretKeyRef(new SecretKeySelectorBuilder()
+                .withName(agentName + ArmadaPluginConfig.JNLP_SECRET_NAME_SUFFIX)
+                .withKey(ArmadaPluginConfig.JNLP_SECRET_KEY)
+                .withOptional(false)
+                .build())
+            .build())
+        .build();
   }
 }
