@@ -13,9 +13,11 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import k8s.io.api.core.v1.Generated.AWSElasticBlockStoreVolumeSource;
 import k8s.io.api.core.v1.Generated.Affinity;
+import k8s.io.api.core.v1.Generated.CSIVolumeSource;
 import k8s.io.api.core.v1.Generated.Capabilities;
 import k8s.io.api.core.v1.Generated.ConfigMapEnvSource;
 import k8s.io.api.core.v1.Generated.ConfigMapKeySelector;
+import k8s.io.api.core.v1.Generated.ConfigMapVolumeSource;
 import k8s.io.api.core.v1.Generated.Container;
 import k8s.io.api.core.v1.Generated.ContainerPort;
 import k8s.io.api.core.v1.Generated.ContainerResizePolicy;
@@ -1781,103 +1783,310 @@ public class ArmadaMapper {
       builder.setSecret(mapSecretVolumeSource(volume.getSecret()));
     }
 
-//    builder
-//        .setHostPath(mapHostPathVolumeSource(volume))
-//        .setGcePersistentDisk(mapGcePersistentDiskVolumeSource(volume))
-//        .setAwsElasticBlockStore(mapAwsElasticBlockStoreVolumeSource(volume))
-//        .setGitRepo(mapGitRepoVolumeSource(volume))
-//        .setSecret(mapSecretVolumeSource(volume))
-//        .setNfs(mapNfsVolumeSource(volume))
-//        .setIscsi(mapIscsiVolumeSource(volume))
-//        .setGlusterfs(mapGlueterfs(volume))
-//        .setPersistentVolumeClaim(mapPersistentVolumeClaim(volume))
-//        .setRbd(mapRbdVolumeSource(volume))
-//        .setFlexVolume(mapFlexVolume(volume));
-    ;
+    if (Objects.nonNull(volume.getConfigMap())) {
+      builder.setConfigMap(mapConfigMapVolumeSource(volume.getConfigMap()));
+    }
+
+    if (Objects.nonNull(volume.getCsi())) {
+      builder.setCsi(mapCsiVolumeSource(volume.getCsi()));
+    }
+
+    if (Objects.nonNull(volume.getHostPath())) {
+      builder.setHostPath(mapHostPathVolumeSource(volume.getHostPath()));
+    }
+
+    if (Objects.nonNull(volume.getNfs())) {
+      builder.setNfs(mapNfsVolumeSource(volume.getNfs()));
+    }
+
+    if (Objects.nonNull(volume.getPersistentVolumeClaim())) {
+      builder.setPersistentVolumeClaim(
+          mapPersistentVolumeClaimVolumeSource(volume.getPersistentVolumeClaim()));
+    }
+
+    if (Objects.nonNull(volume.getGitRepo())) {
+      builder.setGitRepo(mapGitRepoVolumeSource(volume.getGitRepo()));
+    }
+
+    if (Objects.nonNull(volume.getAwsElasticBlockStore())) {
+      builder.setAwsElasticBlockStore(
+          mapAwsElasticBlockStoreVolumeSource(volume.getAwsElasticBlockStore()));
+    }
+
+    if (Objects.nonNull(volume.getGcePersistentDisk())) {
+      builder.setGcePersistentDisk(
+          mapGcePersistentDiskVolumeSource(volume.getGcePersistentDisk()));
+    }
+
+    if (Objects.nonNull(volume.getIscsi())) {
+      builder.setIscsi(mapIscsiVolumeSource(volume.getIscsi()));
+    }
+
+    if (Objects.nonNull(volume.getRbd())) {
+      builder.setRbd(mapRbdVolumeSource(volume.getRbd()));
+    }
+
+    if (Objects.nonNull(volume.getGlusterfs())) {
+      builder.setGlusterfs(mapGlusterfsVolumeSource(volume.getGlusterfs()));
+    }
+
+    if (Objects.nonNull(volume.getFlexVolume())) {
+      builder.setFlexVolume(mapFlexVolume(volume.getFlexVolume()));
+    }
+
+    VolumeSource volumeSource = builder.build();
+
+    // A volume whose source we cannot map would be submitted with an empty source: Armada and
+    // Kubernetes both accept that, and the container silently starts with an empty mount path.
+    // Fail the submission instead, so the build reports the gap rather than running against
+    // nothing.
+    if (volumeSource.equals(VolumeSource.getDefaultInstance())) {
+      throw new IllegalArgumentException("Volume '" + volume.getName()
+          + "' declares a volume source this plugin cannot submit to Armada. Supported: emptyDir, "
+          + "secret, configMap, csi, hostPath, nfs, persistentVolumeClaim, gitRepo, "
+          + "awsElasticBlockStore, gcePersistentDisk, iscsi, rbd, glusterfs, flexVolume.");
+    }
+
+    return volumeSource;
+  }
+
+  public CSIVolumeSource mapCsiVolumeSource(
+      io.fabric8.kubernetes.api.model.CSIVolumeSource csiVolumeSource) {
+    CSIVolumeSource.Builder builder = CSIVolumeSource.newBuilder();
+
+    if (Objects.nonNull(csiVolumeSource.getDriver())) {
+      builder.setDriver(csiVolumeSource.getDriver());
+    }
+
+    if (Objects.nonNull(csiVolumeSource.getReadOnly())) {
+      builder.setReadOnly(csiVolumeSource.getReadOnly());
+    }
+
+    if (Objects.nonNull(csiVolumeSource.getFsType())) {
+      builder.setFsType(csiVolumeSource.getFsType());
+    }
+
+    if (Objects.nonNull(csiVolumeSource.getVolumeAttributes())) {
+      // An attribute written in yaml with no value parses as null. Protobuf maps reject null
+      // values, and Kubernetes would decode such an attribute as an empty string, so do the same.
+      csiVolumeSource.getVolumeAttributes()
+          .forEach((k, v) -> builder.putVolumeAttributes(k, Objects.toString(v, "")));
+    }
+
+    if (Objects.nonNull(csiVolumeSource.getNodePublishSecretRef())) {
+      builder.setNodePublishSecretRef(
+          mapLocalObjectReference(csiVolumeSource.getNodePublishSecretRef()));
+    }
 
     return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
-  public FlexVolumeSource mapFlexVolume(io.fabric8.kubernetes.api.model.Volume volume) {
-    return FlexVolumeSource.newBuilder()
-        .setDriver(volume.getFlexVolume().getDriver())
-        .setFsType(volume.getFlexVolume().getFsType())
-        .setSecretRef(mapLocalObjectReference(volume.getFlexVolume().getSecretRef()))
-        .setReadOnly(volume.getFlexVolume().getReadOnly())
-        .putAllOptions(volume.getFlexVolume().getOptions())
-        .build();
+  public ConfigMapVolumeSource mapConfigMapVolumeSource(
+      io.fabric8.kubernetes.api.model.ConfigMapVolumeSource configMapVolumeSource) {
+    ConfigMapVolumeSource.Builder builder = ConfigMapVolumeSource.newBuilder();
+
+    // The config map name lives in the embedded LocalObjectReference, unlike SecretVolumeSource.
+    if (Objects.nonNull(configMapVolumeSource.getName())) {
+      builder.setLocalObjectReference(
+          LocalObjectReference.newBuilder().setName(configMapVolumeSource.getName()));
+    }
+
+    if (Objects.nonNull(configMapVolumeSource.getItems())) {
+      builder.addAllItems(mapKeyToPaths(configMapVolumeSource.getItems()));
+    }
+
+    if (Objects.nonNull(configMapVolumeSource.getDefaultMode())) {
+      builder.setDefaultMode(configMapVolumeSource.getDefaultMode());
+    }
+
+    if (Objects.nonNull(configMapVolumeSource.getOptional())) {
+      builder.setOptional(configMapVolumeSource.getOptional());
+    }
+
+    return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
-  public RBDVolumeSource mapRbdVolumeSource(io.fabric8.kubernetes.api.model.Volume volume) {
+  public FlexVolumeSource mapFlexVolume(
+      io.fabric8.kubernetes.api.model.FlexVolumeSource flexVolumeSource) {
+    FlexVolumeSource.Builder builder = FlexVolumeSource.newBuilder();
+
+    if (Objects.nonNull(flexVolumeSource.getDriver())) {
+      builder.setDriver(flexVolumeSource.getDriver());
+    }
+
+    if (Objects.nonNull(flexVolumeSource.getFsType())) {
+      builder.setFsType(flexVolumeSource.getFsType());
+    }
+
+    if (Objects.nonNull(flexVolumeSource.getSecretRef())) {
+      builder.setSecretRef(mapLocalObjectReference(flexVolumeSource.getSecretRef()));
+    }
+
+    if (Objects.nonNull(flexVolumeSource.getReadOnly())) {
+      builder.setReadOnly(flexVolumeSource.getReadOnly());
+    }
+
+    if (Objects.nonNull(flexVolumeSource.getOptions())) {
+      // An option written in yaml with no value parses as null, which protobuf maps reject.
+      flexVolumeSource.getOptions()
+          .forEach((k, v) -> builder.putOptions(k, Objects.toString(v, "")));
+    }
+
+    return builder.build();
+  }
+
+  public RBDVolumeSource mapRbdVolumeSource(
+      io.fabric8.kubernetes.api.model.RBDVolumeSource rbdVolumeSource) {
     // Note: Monitors field type mismatch between Fabric8 (List<String>) and Armada protobuf (repeated string).
     // Skipping monitors field mapping due to protobuf API differences.
     // RBD volumes are rarely used, so this limitation should not affect most users.
-    return RBDVolumeSource.newBuilder()
-        .setImage(volume.getRbd().getImage())
-        .setFsType(volume.getRbd().getFsType())
-        .setPool(volume.getRbd().getPool())
-        .setUser(volume.getRbd().getUser())
-        .setKeyring(volume.getRbd().getKeyring())
-        .setSecretRef(mapLocalObjectReference(volume.getRbd().getSecretRef()))
-        .setReadOnly(volume.getRbd().getReadOnly())
-        .build();
+    RBDVolumeSource.Builder builder = RBDVolumeSource.newBuilder();
+
+    if (Objects.nonNull(rbdVolumeSource.getImage())) {
+      builder.setImage(rbdVolumeSource.getImage());
+    }
+
+    if (Objects.nonNull(rbdVolumeSource.getFsType())) {
+      builder.setFsType(rbdVolumeSource.getFsType());
+    }
+
+    if (Objects.nonNull(rbdVolumeSource.getPool())) {
+      builder.setPool(rbdVolumeSource.getPool());
+    }
+
+    if (Objects.nonNull(rbdVolumeSource.getUser())) {
+      builder.setUser(rbdVolumeSource.getUser());
+    }
+
+    if (Objects.nonNull(rbdVolumeSource.getKeyring())) {
+      builder.setKeyring(rbdVolumeSource.getKeyring());
+    }
+
+    if (Objects.nonNull(rbdVolumeSource.getSecretRef())) {
+      builder.setSecretRef(mapLocalObjectReference(rbdVolumeSource.getSecretRef()));
+    }
+
+    if (Objects.nonNull(rbdVolumeSource.getReadOnly())) {
+      builder.setReadOnly(rbdVolumeSource.getReadOnly());
+    }
+
+    return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
-  public PersistentVolumeClaimVolumeSource mapPersistentVolumeClaim(
-      io.fabric8.kubernetes.api.model.Volume volume) {
-    return PersistentVolumeClaimVolumeSource.newBuilder()
-        .setClaimName(volume.getPersistentVolumeClaim().getClaimName())
-        .setReadOnly(volume.getPersistentVolumeClaim().getReadOnly())
-        .build();
+  public PersistentVolumeClaimVolumeSource mapPersistentVolumeClaimVolumeSource(
+      io.fabric8.kubernetes.api.model.PersistentVolumeClaimVolumeSource claimVolumeSource) {
+    PersistentVolumeClaimVolumeSource.Builder builder =
+        PersistentVolumeClaimVolumeSource.newBuilder();
+
+    if (Objects.nonNull(claimVolumeSource.getClaimName())) {
+      builder.setClaimName(claimVolumeSource.getClaimName());
+    }
+
+    if (Objects.nonNull(claimVolumeSource.getReadOnly())) {
+      builder.setReadOnly(claimVolumeSource.getReadOnly());
+    }
+
+    return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
-  public GlusterfsVolumeSource mapGlueterfs(io.fabric8.kubernetes.api.model.Volume volume) {
-    return GlusterfsVolumeSource.newBuilder()
-        .setEndpoints(volume.getGlusterfs().getEndpoints())
-        .setPath(volume.getGlusterfs().getPath())
-        .setReadOnly(volume.getGlusterfs().getReadOnly())
-        .build();
+  public GlusterfsVolumeSource mapGlusterfsVolumeSource(
+      io.fabric8.kubernetes.api.model.GlusterfsVolumeSource glusterfsVolumeSource) {
+    GlusterfsVolumeSource.Builder builder = GlusterfsVolumeSource.newBuilder();
+
+    if (Objects.nonNull(glusterfsVolumeSource.getEndpoints())) {
+      builder.setEndpoints(glusterfsVolumeSource.getEndpoints());
+    }
+
+    if (Objects.nonNull(glusterfsVolumeSource.getPath())) {
+      builder.setPath(glusterfsVolumeSource.getPath());
+    }
+
+    if (Objects.nonNull(glusterfsVolumeSource.getReadOnly())) {
+      builder.setReadOnly(glusterfsVolumeSource.getReadOnly());
+    }
+
+    return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
-  public ISCSIVolumeSource mapIscsiVolumeSource(io.fabric8.kubernetes.api.model.Volume volume) {
-    return ISCSIVolumeSource.newBuilder()
-        .setTargetPortal(volume.getIscsi().getTargetPortal())
-        .setIqn(volume.getIscsi().getIqn())
-        .setLun(volume.getIscsi().getLun())
-        .setIscsiInterface(volume.getIscsi().getIscsiInterface())
-        .setFsType(volume.getIscsi().getFsType())
-        .setReadOnly(volume.getIscsi().getReadOnly())
-        .addAllPortals(volume.getIscsi().getPortals())
-        .setChapAuthDiscovery(volume.getIscsi().getChapAuthDiscovery())
-        .setChapAuthSession(volume.getIscsi().getChapAuthSession())
-        .setSecretRef(mapLocalObjectReference(volume.getIscsi().getSecretRef()))
-        .setInitiatorName(volume.getIscsi().getInitiatorName())
-        .build();
+  public ISCSIVolumeSource mapIscsiVolumeSource(
+      io.fabric8.kubernetes.api.model.ISCSIVolumeSource iscsiVolumeSource) {
+    ISCSIVolumeSource.Builder builder = ISCSIVolumeSource.newBuilder();
+
+    if (Objects.nonNull(iscsiVolumeSource.getTargetPortal())) {
+      builder.setTargetPortal(iscsiVolumeSource.getTargetPortal());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getIqn())) {
+      builder.setIqn(iscsiVolumeSource.getIqn());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getLun())) {
+      builder.setLun(iscsiVolumeSource.getLun());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getIscsiInterface())) {
+      builder.setIscsiInterface(iscsiVolumeSource.getIscsiInterface());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getFsType())) {
+      builder.setFsType(iscsiVolumeSource.getFsType());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getReadOnly())) {
+      builder.setReadOnly(iscsiVolumeSource.getReadOnly());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getPortals())) {
+      builder.addAllPortals(iscsiVolumeSource.getPortals());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getChapAuthDiscovery())) {
+      builder.setChapAuthDiscovery(iscsiVolumeSource.getChapAuthDiscovery());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getChapAuthSession())) {
+      builder.setChapAuthSession(iscsiVolumeSource.getChapAuthSession());
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getSecretRef())) {
+      builder.setSecretRef(mapLocalObjectReference(iscsiVolumeSource.getSecretRef()));
+    }
+
+    if (Objects.nonNull(iscsiVolumeSource.getInitiatorName())) {
+      builder.setInitiatorName(iscsiVolumeSource.getInitiatorName());
+    }
+
+    return builder.build();
   }
 
   public LocalObjectReference mapLocalObjectReference(
       io.fabric8.kubernetes.api.model.LocalObjectReference secretRef) {
     LocalObjectReference.Builder builder = LocalObjectReference.newBuilder();
 
-    if (Objects.nonNull(secretRef.getName())) {
+    if (Objects.nonNull(secretRef) && Objects.nonNull(secretRef.getName())) {
       builder.setName(secretRef.getName());
     }
 
     return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
-  public NFSVolumeSource mapNfsVolumeSource(io.fabric8.kubernetes.api.model.Volume volume) {
-    return NFSVolumeSource.newBuilder()
-        .setServer(volume.getNfs().getServer())
-        .setPath(volume.getNfs().getPath())
-        .setReadOnly(volume.getNfs().getReadOnly())
-        .build();
+  public NFSVolumeSource mapNfsVolumeSource(
+      io.fabric8.kubernetes.api.model.NFSVolumeSource nfsVolumeSource) {
+    NFSVolumeSource.Builder builder = NFSVolumeSource.newBuilder();
+
+    if (Objects.nonNull(nfsVolumeSource.getServer())) {
+      builder.setServer(nfsVolumeSource.getServer());
+    }
+
+    if (Objects.nonNull(nfsVolumeSource.getPath())) {
+      builder.setPath(nfsVolumeSource.getPath());
+    }
+
+    if (Objects.nonNull(nfsVolumeSource.getReadOnly())) {
+      builder.setReadOnly(nfsVolumeSource.getReadOnly());
+    }
+
+    return builder.build();
   }
 
   public SecretVolumeSource mapSecretVolumeSource(
@@ -1926,36 +2135,70 @@ public class ArmadaMapper {
         .collect(Collectors.toList());
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
   public GitRepoVolumeSource mapGitRepoVolumeSource(
-      io.fabric8.kubernetes.api.model.Volume volume) {
-    return GitRepoVolumeSource.newBuilder()
-        .setRepository(volume.getGitRepo().getRepository())
-        .setRevision(volume.getGitRepo().getRevision())
-        .setDirectory(volume.getGitRepo().getDirectory())
-        .build();
+      io.fabric8.kubernetes.api.model.GitRepoVolumeSource gitRepoVolumeSource) {
+    GitRepoVolumeSource.Builder builder = GitRepoVolumeSource.newBuilder();
+
+    if (Objects.nonNull(gitRepoVolumeSource.getRepository())) {
+      builder.setRepository(gitRepoVolumeSource.getRepository());
+    }
+
+    if (Objects.nonNull(gitRepoVolumeSource.getRevision())) {
+      builder.setRevision(gitRepoVolumeSource.getRevision());
+    }
+
+    if (Objects.nonNull(gitRepoVolumeSource.getDirectory())) {
+      builder.setDirectory(gitRepoVolumeSource.getDirectory());
+    }
+
+    return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
   public AWSElasticBlockStoreVolumeSource mapAwsElasticBlockStoreVolumeSource(
-      io.fabric8.kubernetes.api.model.Volume volume) {
-    return AWSElasticBlockStoreVolumeSource.newBuilder()
-        .setVolumeID(volume.getAwsElasticBlockStore().getVolumeID())
-        .setFsType(volume.getAwsElasticBlockStore().getFsType())
-        .setPartition(volume.getAwsElasticBlockStore().getPartition())
-        .setReadOnly(volume.getAwsElasticBlockStore().getReadOnly())
-        .build();
+      io.fabric8.kubernetes.api.model.AWSElasticBlockStoreVolumeSource ebsVolumeSource) {
+    AWSElasticBlockStoreVolumeSource.Builder builder =
+        AWSElasticBlockStoreVolumeSource.newBuilder();
+
+    if (Objects.nonNull(ebsVolumeSource.getVolumeID())) {
+      builder.setVolumeID(ebsVolumeSource.getVolumeID());
+    }
+
+    if (Objects.nonNull(ebsVolumeSource.getFsType())) {
+      builder.setFsType(ebsVolumeSource.getFsType());
+    }
+
+    if (Objects.nonNull(ebsVolumeSource.getPartition())) {
+      builder.setPartition(ebsVolumeSource.getPartition());
+    }
+
+    if (Objects.nonNull(ebsVolumeSource.getReadOnly())) {
+      builder.setReadOnly(ebsVolumeSource.getReadOnly());
+    }
+
+    return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
   public GCEPersistentDiskVolumeSource mapGcePersistentDiskVolumeSource(
-      io.fabric8.kubernetes.api.model.Volume volume) {
-    return GCEPersistentDiskVolumeSource.newBuilder()
-        .setPdName(volume.getGcePersistentDisk().getPdName())
-        .setFsType(volume.getGcePersistentDisk().getFsType())
-        .setPartition(volume.getGcePersistentDisk().getPartition())
-        .setReadOnly(volume.getGcePersistentDisk().getReadOnly())
-        .build();
+      io.fabric8.kubernetes.api.model.GCEPersistentDiskVolumeSource gceVolumeSource) {
+    GCEPersistentDiskVolumeSource.Builder builder = GCEPersistentDiskVolumeSource.newBuilder();
+
+    if (Objects.nonNull(gceVolumeSource.getPdName())) {
+      builder.setPdName(gceVolumeSource.getPdName());
+    }
+
+    if (Objects.nonNull(gceVolumeSource.getFsType())) {
+      builder.setFsType(gceVolumeSource.getFsType());
+    }
+
+    if (Objects.nonNull(gceVolumeSource.getPartition())) {
+      builder.setPartition(gceVolumeSource.getPartition());
+    }
+
+    if (Objects.nonNull(gceVolumeSource.getReadOnly())) {
+      builder.setReadOnly(gceVolumeSource.getReadOnly());
+    }
+
+    return builder.build();
   }
 
   public EmptyDirVolumeSource mapEmptyDirVolumeSource(
@@ -1973,17 +2216,19 @@ public class ArmadaMapper {
     return builder.build();
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
   public HostPathVolumeSource mapHostPathVolumeSource(
-      io.fabric8.kubernetes.api.model.Volume volume) {
-    if (volume.getHostPath() == null) {
-      return HostPathVolumeSource.newBuilder().build();
+      io.fabric8.kubernetes.api.model.HostPathVolumeSource hostPathVolumeSource) {
+    HostPathVolumeSource.Builder builder = HostPathVolumeSource.newBuilder();
+
+    if (Objects.nonNull(hostPathVolumeSource.getPath())) {
+      builder.setPath(hostPathVolumeSource.getPath());
     }
 
-    return HostPathVolumeSource.newBuilder()
-        .setPath(volume.getHostPath().getPath())
-        .setType(volume.getHostPath().getType())
-        .build();
+    if (Objects.nonNull(hostPathVolumeSource.getType())) {
+      builder.setType(hostPathVolumeSource.getType());
+    }
+
+    return builder.build();
   }
 
 }
