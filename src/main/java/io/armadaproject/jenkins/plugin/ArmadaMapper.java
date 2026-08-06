@@ -876,7 +876,6 @@ public class ArmadaMapper {
         .collect(Collectors.toList());
   }
 
-  @SuppressFBWarnings("UPM_UNCALLED_public_METHOD")
   public Iterable<? extends EphemeralContainer> mapEphermalContainers(
       List<io.fabric8.kubernetes.api.model.EphemeralContainer> ephemeralContainers) {
     return ephemeralContainers

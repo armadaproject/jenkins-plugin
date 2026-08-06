@@ -2,6 +2,7 @@ package io.armadaproject.jenkins.plugin;
 
 import api.SubmitOuterClass.CancellationResult;
 import api.SubmitOuterClass.JobCancelRequest;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.model.Descriptor;
 import hudson.model.TaskListener;
 import hudson.slaves.AbstractCloudSlave;
@@ -21,6 +22,11 @@ public class ArmadaSlave extends AbstractCloudSlave {
   private static final Logger LOGGER = Logger.getLogger(ArmadaSlave.class.getName());
 
   private final String cloudName;
+
+  @SuppressFBWarnings(value = "SE_TRANSIENT_FIELD_NOT_RESTORED",
+      justification = "The template holds the build's TaskListener and is deliberately not "
+          + "persisted; an agent deserialized after a controller restart has none, which "
+          + "_terminate() handles")
   private transient final ArmadaJobTemplate template;
 
   public ArmadaSlave(
@@ -64,11 +70,14 @@ public class ArmadaSlave extends AbstractCloudSlave {
 
   @Override
   protected void _terminate(TaskListener listener) throws IOException, InterruptedException {
-    template.getListener().getLogger().println("Terminating agent: " + template.getLabel());
+    // After a controller restart the template is gone, so fall back to the caller's listener.
+    TaskListener effectiveListener = template != null ? template.getListener() : listener;
+    effectiveListener.getLogger().println(
+        "Terminating agent: " + (template != null ? template.getLabel() : getNodeName()));
 
     // Cancel the job via Armada API
     try {
-      cancelArmadaJob(template.getListener());
+      cancelArmadaJob(effectiveListener);
     } catch (Exception e) {
       String message = "Failed to terminate job: " + e.getMessage();
       LOGGER.severe(message);

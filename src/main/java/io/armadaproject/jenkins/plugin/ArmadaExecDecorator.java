@@ -58,7 +58,7 @@ public class ArmadaExecDecorator extends LauncherDecorator implements Serializab
   private static final long serialVersionUID = 1L;
   private static final Logger LOGGER = Logger.getLogger(ArmadaExecDecorator.class.getName());
 
-  @SuppressFBWarnings(value = "SE_TRANSIENT_FIELD_NOT_RESTORED", justification = "reinitialized in readObject()")
+  // Reinitialized in readObject(), so SpotBugs does not flag it as unrestored.
   private transient List<Closeable> closables;
 
   private String containerName;
