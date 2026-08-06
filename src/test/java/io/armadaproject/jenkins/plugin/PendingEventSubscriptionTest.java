@@ -24,7 +24,7 @@ class PendingEventSubscriptionTest {
   @BeforeEach
   void setUp() {
     cloud = mock(ArmadaCloud.class);
-    manager = new ArmadaEventManager<>();
+    manager = new ArmadaEventManager<>(JobPendingEvent::getJobId);
     when(cloud.getArmadaPendingEventManager()).thenReturn(manager);
     lenient().when(cloud.getJobSetIdThreads()).thenReturn(new ConcurrentHashMap<>());
     // The subscription starts the watcher; stub it out so no real Armada client is opened.

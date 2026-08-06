@@ -21,6 +21,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.awaitility.Awaitility;
@@ -87,7 +88,29 @@ public class ArmadaLauncher extends JNLPLauncher {
       LOGGER.severe("Failed to launch Armada agent: " + e.getMessage());
       listener.error("Failed to launch Armada agent: " + e.getMessage()).close();
       e.printStackTrace(listener.getLogger());
+      // The node was registered with Jenkins before launching. Leaving it behind offline makes the
+      // queued task wait forever on a label no other agent provides, so remove it and let the build
+      // fail fast.
+      terminateQuietly(node, listener);
       throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Removes a node that failed to launch, cancelling its Armada job. Never throws: the launch
+   * failure that triggered the cleanup is the error worth reporting.
+   */
+  private void terminateQuietly(ArmadaSlave node, TaskListener listener) {
+    try {
+      node.terminate();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      LOGGER.log(Level.WARNING, "Interrupted while terminating agent " + node.getNodeName(), e);
+    } catch (Exception e) {
+      LOGGER.log(Level.WARNING,
+          "Could not terminate agent " + node.getNodeName() + " after launch failure", e);
+      listener.getLogger()
+          .println("Could not terminate agent after launch failure: " + e.getMessage());
     }
   }
 
@@ -202,7 +225,7 @@ public class ArmadaLauncher extends JNLPLauncher {
 
     LOGGER.fine("Job with id: " + computer.getArmadaJobId() + " in state: " + existingJobState);
 
-    if (existingJobState != JobState.UNKNOWN) {
+    if (existingJobState != null && existingJobState != JobState.UNKNOWN) {
       listener.getLogger().println("Job already exists: " + computer.getArmadaJobId());
       computer.setLaunching(true);
       return true;
@@ -297,25 +320,31 @@ public class ArmadaLauncher extends JNLPLauncher {
   }
 
   /**
-   * Gets the current state of a job from Armada.
+   * Gets the current state of a job from Armada. Returns null when the status call fails, so that
+   * a transient Armada outage is treated like an as-yet-unknown state and polling continues.
    */
-  private JobState getJobState(ArmadaClient client, String jobId) throws IOException {
+  private JobState getJobState(ArmadaClient client, String jobId) {
     try {
       JobStatusResponse status = client.getJobStatus(
           JobStatusRequest.newBuilder().addJobIds(jobId).build());
       return status.getJobStatesMap().get(jobId);
     } catch (Exception e) {
-      throw new IOException("Failed to get job status for: " + jobId, e);
+      LOGGER.log(Level.WARNING, "Failed to get job status for: " + jobId + ", will retry", e);
+      return null;
     }
   }
 
   /**
-   * Waits for the Armada job to reach RUNNING state using Armada's status API.
+   * Waits for the Armada job to reach RUNNING state using Armada's status API. Keeps polling for
+   * every non-terminal state - including UNKNOWN, which Armada reports until it has ingested the
+   * job - and stops early only when the job reaches a terminal state.
    */
   private void waitForJobRunning(ArmadaClient armadaClient, ArmadaComputer computer,
       TaskListener listener) throws IOException {
     String jobId = computer.getArmadaJobId();
     listener.getLogger().println("Waiting for job to be running...");
+
+    AtomicReference<IOException> terminalFailure = new AtomicReference<>();
 
     try {
       Awaitility.await()
@@ -325,19 +354,36 @@ public class ArmadaLauncher extends JNLPLauncher {
             JobState currentState = getJobState(armadaClient, jobId);
             LOGGER.fine("Job " + jobId + " state: " + currentState);
 
-            // Check for terminal failure states using validator
-            JobStateValidator.validate(currentState, jobId);
+            try {
+              JobStateValidator.validate(currentState, jobId);
+            } catch (IOException e) {
+              // Terminal state: record it and stop polling, the failure is rethrown below.
+              terminalFailure.set(e);
+              return true;
+            }
 
             return JobStateValidator.isRunning(currentState);
           });
 
-      listener.getLogger().println("Job is running: " + jobId);
-
     } catch (Exception e) {
-      LOGGER.severe("Job failed to reach RUNNING state: " + e.getMessage());
-      listener.error("Job failed to reach RUNNING state: " + e.getMessage()).close();
-      throw new IOException("Job did not start successfully: " + jobId, e);
+      throw jobNotStarted(jobId, listener, e);
     }
+
+    IOException failure = terminalFailure.get();
+    if (failure != null) {
+      throw jobNotStarted(jobId, listener, failure);
+    }
+
+    listener.getLogger().println("Job is running: " + jobId);
+  }
+
+  /**
+   * Logs and builds the failure raised when a job never reaches RUNNING.
+   */
+  private IOException jobNotStarted(String jobId, TaskListener listener, Exception cause) {
+    LOGGER.severe("Job failed to reach RUNNING state: " + cause.getMessage());
+    listener.error("Job failed to reach RUNNING state: " + cause.getMessage()).close();
+    return new IOException("Job did not start successfully: " + jobId, cause);
   }
 
   /**
@@ -500,7 +546,8 @@ public class ArmadaLauncher extends JNLPLauncher {
   }
 
   /**
-   * Validates that the job hasn't failed during the wait period.
+   * Validates that the job hasn't reached a terminal state during the wait period. A status call
+   * that fails, or a state Armada does not know yet, leaves the wait running.
    */
   private void validateJobStillRunning(ArmadaComputer computer, ArmadaClient armadaClient)
       throws IOException {

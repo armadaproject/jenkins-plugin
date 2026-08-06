@@ -110,6 +110,13 @@ public class ArmadaSlave extends AbstractCloudSlave {
 
       listener.getLogger().println("Cancelling job with id: " + jobId);
 
+      // Drop the retained events for this job only: the job set ID is shared with every other job
+      // submitted in the same period.
+      if (jobSetId != null && !jobSetId.isEmpty()) {
+        cloud.getArmadaEventManager().evict(jobSetId, jobId);
+        cloud.getArmadaPendingEventManager().evict(jobSetId, jobId);
+      }
+
       // Cancel the job via Armada API
       try (ArmadaClient armadaClient = cloud.createArmadaClient()) {
 

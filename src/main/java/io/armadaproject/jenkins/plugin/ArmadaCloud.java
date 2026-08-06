@@ -118,10 +118,10 @@ public class ArmadaCloud extends Cloud {
       dynamicTemplates = new ConcurrentHashMap<>();
     }
     if (armadaEventManager == null) {
-      armadaEventManager = new ArmadaEventManager<>();
+      armadaEventManager = new ArmadaEventManager<>(JobRunningEvent::getJobId);
     }
     if (armadaPendingEventManager == null) {
-      armadaPendingEventManager = new ArmadaEventManager<>();
+      armadaPendingEventManager = new ArmadaEventManager<>(JobPendingEvent::getJobId);
     }
     if (jobSetIdThreads == null) {
       jobSetIdThreads = new ConcurrentHashMap<>();
@@ -424,7 +424,7 @@ public class ArmadaCloud extends Cloud {
    */
   public ArmadaEventManager<JobRunningEvent> getArmadaEventManager() {
     if (armadaEventManager == null) {
-      armadaEventManager = new ArmadaEventManager<>();
+      armadaEventManager = new ArmadaEventManager<>(JobRunningEvent::getJobId);
     }
     return armadaEventManager;
   }
@@ -436,7 +436,7 @@ public class ArmadaCloud extends Cloud {
    */
   public ArmadaEventManager<JobPendingEvent> getArmadaPendingEventManager() {
     if (armadaPendingEventManager == null) {
-      armadaPendingEventManager = new ArmadaEventManager<>();
+      armadaPendingEventManager = new ArmadaEventManager<>(JobPendingEvent::getJobId);
     }
     return armadaPendingEventManager;
   }
@@ -453,7 +453,8 @@ public class ArmadaCloud extends Cloud {
 
   /**
    * Starts watching Armada events for the specified job set ID. Creates a background thread that
-   * streams events from Armada and publishes them to subscribers.
+   * streams events from Armada and publishes them to subscribers. The caller owns the returned
+   * thread and is responsible for registering it in {@link #getJobSetIdThreads()}.
    *
    * @param jobSetId the job set ID to watch
    * @return the thread watching the events
@@ -509,7 +510,6 @@ public class ArmadaCloud extends Cloud {
     Thread watcher = new Thread(job);
     watcher.setName("armada-event-watcher-" + jobSetId);
     watcher.setDaemon(true);
-    getJobSetIdThreads().put(jobSetId, watcher);
     watcher.start();
     return watcher;
   }
